@@ -1,0 +1,27 @@
+# Opsiyonel: Lokal PostgreSQL kullanmak istemiyorsan `docker compose up -d` ile
+# Postgres 16'yı container'da çalıştırabilirsin. Ayrıntı için README.md.
+# Bu durumda .env içindeki DATABASE_URL portu 5433 olmalı.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: otopark-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: otopark
+      POSTGRES_PASSWORD: otopark
+      POSTGRES_DB: otopark_dev
+      TZ: Europe/Istanbul
+      PGTZ: Europe/Istanbul
+    ports:
+      - "5433:5432"
+    volumes:
+      - otopark-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U otopark -d otopark_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  otopark-pgdata:

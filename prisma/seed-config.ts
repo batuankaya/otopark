@@ -1,0 +1,57 @@
+/**
+ * ===========================================================================
+ *  OTOPARK BAŞLANGIÇ DEĞERLERİ
+ * ===========================================================================
+ *  Tarife, kapasite ve park alanı bilgilerinin TEK kaynağı burasıdır.
+ *  Kendi değerlerini vermek için sadece bu dosyayı düzenle, sonra:
+ *
+ *      npx prisma migrate reset      (veritabanını sıfırlar + seed çalıştırır)
+ *
+ *  Not: Bu değerler yalnızca ilk kurulum içindir. Sistem çalışmaya
+ *  başladıktan sonra hepsi Ayarlar ekranından değiştirilebilir.
+ * ===========================================================================
+ */
+
+export const otoparkBilgisi = {
+  otoparkAdi: "Otopark",
+  adres: "Eskişehir",
+  telefon: "0222 000 00 00",
+  /** Toplam araç kapasitesi — ana panodaki doluluk göstergesi bunu kullanır. */
+  toplamKapasite: 150,
+  /** Fişin en altında görünen not. */
+  fisAltNotu: "Bizi tercih ettiğiniz için teşekkür ederiz.",
+};
+
+export const varsayilanTarife = {
+  ad: "Standart Tarife",
+  /** Bu süreyi aşmayan parklardan ücret alınmaz (dakika). */
+  ilkUcretsizDakika: 15,
+  /** İlk saatin (giriş) ücreti — ilk saat tamamlanmasa da tam alınır (TL). */
+  ilkSaatUcreti: 100,
+  /** İlk saatten SONRAKİ her başlayan saat için eklenen tutar (TL). */
+  saatlikUcret: 50,
+  /**
+   * Günlük üst sınır (TL). Otopark saf saatlik çalıştığı için 0'dır —
+   * yani üst sınır uygulanmaz. İleride bir gün için tavan koymak isterseniz
+   * buraya tutar yazmanız (ya da Ayarlar'dan girmeniz) yeterli.
+   */
+  gunlukTavanUcret: 0,
+};
+
+export const kullanicilar = {
+  admin: {
+    adSoyad: "Sistem Yöneticisi",
+    email: "admin@otopark.local",
+    sifreEnv: "SEED_ADMIN_SIFRE",
+    varsayilanSifre: "Admin123!",
+  },
+  gorevli: {
+    adSoyad: "Ahmet Görevli",
+    email: "gorevli@otopark.local",
+    sifreEnv: "SEED_GOREVLI_SIFRE",
+    varsayilanSifre: "Gorevli123!",
+  },
+};
+
+/** Seed'in üreteceği örnek park kaydı sayısı. */
+export const ornekParkKaydiSayisi = 30;

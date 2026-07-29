@@ -1,0 +1,410 @@
+// Otopark Yönetim Sistemi — veritabanı şeması
+// Tüm parasal alanlar Decimal(10,2); tüm zamanlar UTC saklanır, arayüzde
+// Europe/Istanbul'a çevrilerek gösterilir.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enum'lar
+// ---------------------------------------------------------------------------
+
+enum Rol {
+  ADMIN
+  GOREVLI
+}
+
+enum TarifeTuru {
+  SAATLIK
+  GUNLUK
+  ABONMAN
+}
+
+enum OdemeYontemi {
+  NAKIT
+  KART
+}
+
+enum ParkDurumu {
+  ICERIDE
+  CIKTI
+  IPTAL
+}
+
+enum AbonmanDurumu {
+  AKTIF
+  SURESI_DOLDU
+  IPTAL
+}
+
+enum IslemTipi {
+  GIRIS
+  GIRIS_BASARISIZ
+  CIKIS
+  IPTAL
+  UCRET_DUZELTME
+  TARIFE_DEGISIKLIGI
+  KULLANICI_DEGISIKLIGI
+  ABONMAN_DEGISIKLIGI
+  PARK_ALANI_DEGISIKLIGI
+  AYAR_DEGISIKLIGI
+  VARDIYA_ACILIS
+  VARDIYA_KAPANIS
+  DISA_AKTARMA
+  OTURUM_ACMA
+  GIDER_EKLEME
+  GIDER_SILME
+  KAYIT_DUZENLEME
+}
+
+// ---------------------------------------------------------------------------
+// Kullanıcılar
+// ---------------------------------------------------------------------------
+
+model Kullanici {
+  id               String   @id @default(cuid())
+  adSoyad          String
+  email            String   @unique
+  sifreHash        String
+  rol              Rol      @default(GOREVLI)
+  aktif            Boolean  @default(true)
+  olusturmaTarihi  DateTime @default(now())
+  guncellemeTarihi DateTime @updatedAt
+
+  girisYaptigiKayitlar ParkKaydi[]    @relation("GirisYapan")
+  cikisYaptigiKayitlar ParkKaydi[]    @relation("CikisYapan")
+  iptalEttigiKayitlar  ParkKaydi[]    @relation("IptalEden")
+  actigiVardiyalar     Vardiya[]      @relation("VardiyaAcan")
+  kapattigiVardiyalar  Vardiya[]      @relation("VardiyaKapatan")
+  giderler             Gider[]
+  islemGunlukleri      IslemGunlugu[]
+
+  @@index([aktif])
+}
+
+// ---------------------------------------------------------------------------
+// Araçlar — ilk girişte otomatik oluşturulur, sonraki girişlerde bilgiler dolar
+// ---------------------------------------------------------------------------
+
+model Arac {
+  id               String   @id @default(cuid())
+  /// Normalize edilmiş plaka: boşluksuz, büyük harf. Örn: 34A1234
+  plaka            String   @unique
+  /// Türk plakası değilse true — doğrulama kuralları farklı işler.
+  yabanciPlaka     Boolean  @default(false)
+  /// Yabancı plakalarda ülke kodu (BG, DE, GE…). Türk plakalarında boş.
+  ulkeKodu         String?
+  /// Ekranda gösterilen okunabilir hâl ("34 A 1234", "M AB 1234").
+  /// Yabancı plakalarda gruplama ülkeye göre değiştiği için hesaplanamaz,
+  /// görevlinin yazdığı gibi saklanır.
+  plakaGosterim    String?
+  marka            String?
+  model            String?
+  renk             String?
+  notlar           String?
+  olusturmaTarihi  DateTime @default(now())
+  guncellemeTarihi DateTime @updatedAt
+
+  parkKayitlari ParkKaydi[]
+  abonmanlar    Abonman[]
+
+  @@index([plaka])
+}
+
+// ---------------------------------------------------------------------------
+// Tarife — düzenlenmez, yeni sürüm oluşturulur. Geçmiş kayıtların ücreti
+// değişmesin diye ParkKaydi hangi tarifeyi kullandığını tarifeId ile saklar.
+// ---------------------------------------------------------------------------
+
+model Tarife {
+  id                  String   @id @default(cuid())
+  ad                  String
+  /// Bu süreyi aşmayan parklardan ücret alınmaz.
+  ilkUcretsizDakika   Int      @default(15)
+  /// İlk saatin ücreti (giriş ücreti). İlk saat tamamlanmasa da tam alınır.
+  ilkSaatUcreti       Decimal  @default(0) @db.Decimal(10, 2)
+  /// İlk saatten SONRAKİ her başlayan saat için eklenen tutar.
+  saatlikUcret        Decimal  @db.Decimal(10, 2)
+  /// Bir gün içinde aşılamayacak üst sınır.
+  gunlukTavanUcret    Decimal  @db.Decimal(10, 2)
+  /// Yeni abonman kayıtları için varsayılan aylık ücret.
+  aylikAbonmanUcreti  Decimal  @default(0) @db.Decimal(10, 2)
+  gecerlilikBaslangic DateTime @default(now())
+  aktif               Boolean  @default(true)
+  olusturmaTarihi     DateTime @default(now())
+
+  parkKayitlari ParkKaydi[]
+
+  @@index([aktif, gecerlilikBaslangic])
+}
+
+// ---------------------------------------------------------------------------
+// Park alanları — Ayarlar ekranından yönetilir
+// ---------------------------------------------------------------------------
+
+model ParkAlani {
+  id       String  @id @default(cuid())
+  ad       String  @unique
+  kapasite Int     @default(0)
+  sira     Int     @default(0)
+  aktif    Boolean @default(true)
+
+  parkKayitlari ParkKaydi[]
+
+  @@index([aktif, sira])
+}
+
+// ---------------------------------------------------------------------------
+// Genel ayarlar — tek satır (id = 1)
+// ---------------------------------------------------------------------------
+
+model Ayar {
+  id               Int      @id @default(1)
+  otoparkAdi       String   @default("Otopark")
+  adres            String?
+  telefon          String?
+  toplamKapasite   Int      @default(100)
+  fisAltNotu       String?
+  guncellemeTarihi DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Park kayıtları — kalbi burası
+// ---------------------------------------------------------------------------
+
+model ParkKaydi {
+  id String @id @default(cuid())
+  /// Fiş üzerinde görünen sıra numarası.
+  fisNo Int @unique @default(autoincrement())
+
+  /// Plakasız kayıtlarda boştur (araç sonradan plakayla eşleştirilir).
+  aracId String?
+  arac   Arac?   @relation(fields: [aracId], references: [id])
+  /// Plaka ayrıca burada da tutulur: arama hızlı olsun ve kayıt anındaki
+  /// hâli değişmez kalsın diye.
+  ///
+  /// NULL olabilir: görevli plakayı okuyamadığında aracı marka/model ile
+  /// kaydedip plakayı sonra girebilsin diye. Kısmi unique index NULL'ları
+  /// çakıştırmaz, dolayısıyla birden fazla plakasız araç içeride olabilir.
+  plaka  String?
+  /// Plakasız kayıtlarda aracı tanımak için marka/model/renk burada da tutulur.
+  marka  String?
+  model  String?
+  renk   String?
+  /// Plakanın kayıt anındaki gösterim ve ülke bilgisi (fiş ve listeler
+  /// aracı ayrıca sorgulamak zorunda kalmasın diye kopyalanır).
+  plakaGosterim String?
+  yabanciPlaka  Boolean @default(false)
+  ulkeKodu      String?
+
+  girisZamani DateTime  @default(now())
+  cikisZamani DateTime?
+
+  girisYapanId String
+  girisYapan   Kullanici @relation("GirisYapan", fields: [girisYapanId], references: [id])
+  cikisYapanId String?
+  cikisYapan   Kullanici? @relation("CikisYapan", fields: [cikisYapanId], references: [id])
+
+  tarifeId   String
+  tarife     Tarife     @relation(fields: [tarifeId], references: [id])
+  tarifeTuru TarifeTuru @default(SAATLIK)
+
+  hesaplananUcret   Decimal?      @db.Decimal(10, 2)
+  tahsilEdilenUcret Decimal?      @db.Decimal(10, 2)
+  odemeYontemi      OdemeYontemi?
+
+  durum ParkDurumu @default(ICERIDE)
+
+  parkAlaniId String?
+  parkAlani   ParkAlani? @relation(fields: [parkAlaniId], references: [id])
+  /// Park alanının kayıt anındaki adı (alan sonradan silinse/yeniden
+  /// adlandırılsa bile fiş ve rapor doğru kalsın diye).
+  parkAlaniAd String?
+
+  abonmanId String?
+  abonman   Abonman? @relation(fields: [abonmanId], references: [id])
+
+  /// Girişin yapıldığı vardiya (zorunlu).
+  vardiyaId String
+  vardiya   Vardiya @relation("GirisVardiyasi", fields: [vardiyaId], references: [id])
+  /// Çıkışın yapıldığı vardiya — tahsilat bu vardiyanın kasasına yazılır.
+  cikisVardiyaId String?
+  cikisVardiya   Vardiya? @relation("CikisVardiyasi", fields: [cikisVardiyaId], references: [id])
+
+  notlar              String?
+  /// İskonto / ücret düzeltmesi yapıldıysa sebebi (zorunlu).
+  ucretDuzeltmeSebebi String?
+
+  /// Soft delete — kayıt silinmez, iptal edilir.
+  iptalSebebi String?
+  iptalEdenId String?
+  iptalEden   Kullanici? @relation("IptalEden", fields: [iptalEdenId], references: [id])
+  iptalZamani DateTime?
+
+  olusturmaTarihi  DateTime @default(now())
+  guncellemeTarihi DateTime @updatedAt
+
+  @@index([plaka])
+  @@index([durum, girisZamani])
+  @@index([cikisZamani])
+  @@index([vardiyaId])
+  @@index([cikisVardiyaId])
+  @@index([girisYapanId])
+  @@index([parkAlaniId, durum])
+}
+
+// ---------------------------------------------------------------------------
+// Abonmanlar
+// ---------------------------------------------------------------------------
+
+model Abonman {
+  id              String        @id @default(cuid())
+  aracId          String
+  arac            Arac          @relation(fields: [aracId], references: [id])
+  musteriAdi      String
+  /// KVKK: kişisel veri — yalnızca yetkili personel görebilir.
+  telefon         String?
+  baslangicTarihi DateTime
+  bitisTarihi     DateTime
+  aylikUcret      Decimal       @db.Decimal(10, 2)
+  durum           AbonmanDurumu @default(AKTIF)
+  notlar          String?
+
+  olusturmaTarihi  DateTime @default(now())
+  guncellemeTarihi DateTime @updatedAt
+
+  parkKayitlari ParkKaydi[]
+
+  @@index([aracId, durum])
+  @@index([bitisTarihi])
+  @@index([durum])
+}
+
+// ---------------------------------------------------------------------------
+// Vardiyalar — kasa devri
+// ---------------------------------------------------------------------------
+
+/// Vardiya = otoparkın ortak kasası. Aynı anda yalnızca BİR vardiya açık
+/// olabilir; kim açtıysa açsın, tüm görevliler o vardiyaya işlem yapar ve
+/// tahsilat tek kasada toplanır.
+model Vardiya {
+  id String @id @default(cuid())
+
+  /// Vardiyayı açan görevli.
+  kullaniciId String
+  kullanici   Kullanici @relation("VardiyaAcan", fields: [kullaniciId], references: [id])
+  /// Vardiyayı kapatan görevli (açandan farklı olabilir).
+  kapatanId   String?
+  kapatan     Kullanici? @relation("VardiyaKapatan", fields: [kapatanId], references: [id])
+
+  baslangic DateTime  @default(now())
+  bitis     DateTime?
+
+  acilisKasa  Decimal  @default(0) @db.Decimal(10, 2)
+  kapanisKasa Decimal? @db.Decimal(10, 2)
+
+  /// Kapanışta dondurulan özet değerler.
+  toplamNakit Decimal? @db.Decimal(10, 2)
+  toplamKart  Decimal? @db.Decimal(10, 2)
+  /// kapanisKasa - (acilisKasa + toplamNakit). Eksi ise kasa açığı.
+  fark        Decimal? @db.Decimal(10, 2)
+
+  notlar String?
+
+  girisKayitlari ParkKaydi[] @relation("GirisVardiyasi")
+  cikisKayitlari ParkKaydi[] @relation("CikisVardiyasi")
+  giderler       Gider[]
+
+  @@index([kullaniciId, bitis])
+  @@index([baslangic])
+}
+
+// ---------------------------------------------------------------------------
+// Giriş denemeleri — brute force koruması
+// ---------------------------------------------------------------------------
+
+/// Başarısız giriş denemeleri.
+///
+/// Hem hesap hem IP bazlı sayılır: saldırgan tek hesaba yüklenebileceği gibi
+/// çok sayıda hesabı da deneyebilir. Başarılı girişte hesabın kayıtları
+/// temizlenir. Eski kayıtlar giriş sırasında budanır (ayrı bir zamanlanmış
+/// göreve ihtiyaç kalmasın diye).
+model GirisDenemesi {
+  id String @id @default(cuid())
+
+  /// Denenen e-posta (hesap var olmasa bile kaydedilir).
+  email String
+  /// İstek IP'si — ters proxy arkasında X-Forwarded-For'dan okunur.
+  ip    String?
+
+  zaman DateTime @default(now())
+
+  @@index([email, zaman])
+  @@index([ip, zaman])
+  @@index([zaman])
+}
+
+// ---------------------------------------------------------------------------
+// Giderler — vardiya sırasında kasadan çıkan para
+// ---------------------------------------------------------------------------
+
+enum GiderKategorisi {
+  YEMEK
+  CAY
+  TEMIZLIK
+  BAKIM
+  KIRTASIYE
+  DIGER
+}
+
+/// Vardiya sırasında yapılan harcama. NAKİT giderler kasadan düşülür;
+/// kart/havale ile ödenenler kasayı etkilemez ama ciro raporunda görünür.
+model Gider {
+  id String @id @default(cuid())
+
+  vardiyaId String
+  vardiya   Vardiya @relation(fields: [vardiyaId], references: [id])
+
+  kullaniciId String
+  kullanici   Kullanici @relation(fields: [kullaniciId], references: [id])
+
+  kategori     GiderKategorisi @default(DIGER)
+  tutar        Decimal         @db.Decimal(10, 2)
+  aciklama     String
+  /// NAKIT ise vardiya kasasından düşülür.
+  odemeYontemi OdemeYontemi    @default(NAKIT)
+
+  zaman            DateTime @default(now())
+  guncellemeTarihi DateTime @updatedAt
+
+  @@index([vardiyaId])
+  @@index([zaman])
+  @@index([kategori, zaman])
+}
+
+// ---------------------------------------------------------------------------
+// İşlem günlüğü — KVKK ve denetim izi
+// ---------------------------------------------------------------------------
+
+model IslemGunlugu {
+  id            String     @id @default(cuid())
+  kullaniciId   String?
+  kullanici     Kullanici? @relation(fields: [kullaniciId], references: [id])
+  zaman         DateTime   @default(now())
+  islemTipi     IslemTipi
+  ilgiliKayitId String?
+  eskiDeger     Json?
+  yeniDeger     Json?
+  aciklama      String?
+
+  @@index([zaman])
+  @@index([kullaniciId, zaman])
+  @@index([islemTipi, zaman])
+  @@index([ilgiliKayitId])
+}
