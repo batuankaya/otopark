@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Şablon dosya yüklenmeli: kurulumda `cp .env.example .env` ile kullanılır.
+# Gerçek sır içermez, yalnızca değişken adlarını ve örnek değerleri gösterir.
+!.env.example
 
 # vercel
 .vercel
