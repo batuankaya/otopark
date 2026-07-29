@@ -1,8 +1,15 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { headers } from "next/headers";
 
 import { authConfig } from "./auth.config";
+import {
+  basarisizDenemeyiKaydet,
+  denemeleriTemizle,
+  girisIzniVarMi,
+  ipAdresiniAl,
+} from "./giris-koruma";
 import { prisma } from "./prisma";
 import { girisSemasi } from "./validasyon";
 
@@ -10,6 +17,11 @@ import { girisSemasi } from "./validasyon";
  * Auth.js — e-posta + şifre ile oturum tabanlı kimlik doğrulama.
  * Oturum httpOnly çerezde şifreli olarak tutulur; şifre hash'i hiçbir
  * response'a sızmaz (aşağıda yalnızca gerekli alanlar seçilir).
+ *
+ * Brute force koruması BURADA yapılır, çağıran Server Action'da değil:
+ * `/api/auth/callback/credentials` uç noktasına doğrudan istek atılarak
+ * Server Action atlanabiliyor. Her iki yol da bu callback'ten geçtiği için
+ * koruma yalnızca burada güvenilir.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -24,6 +36,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!ayrisma.success) return null;
 
         const { email, sifre } = ayrisma.data;
+        const ip = ipAdresiniAl(await headers());
+
+        // Şifre kontrolünden ÖNCE: kilitliyken bcrypt çalıştırmak gereksiz
+        // yük yaratır ve cevap süresinden saldırgana bilgi sızdırır.
+        const izin = await girisIzniVarMi(email, ip);
+        if (izin.engelli) return null;
 
         const kullanici = await prisma.kullanici.findUnique({
           where: { email },
@@ -42,7 +60,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const hash = kullanici?.sifreHash ?? "$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidi";
         const sifreDogru = await bcrypt.compare(sifre, hash);
 
-        if (!kullanici || !sifreDogru || !kullanici.aktif) return null;
+        if (!kullanici || !sifreDogru || !kullanici.aktif) {
+          await basarisizDenemeyiKaydet(email, ip);
+          return null;
+        }
+
+        // Başarılı giriş: brute force sayacı sıfırlanır.
+        await denemeleriTemizle(email);
 
         return {
           id: kullanici.id,

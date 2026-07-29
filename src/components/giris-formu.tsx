@@ -5,15 +5,15 @@ import { useFormStatus } from "react-dom";
 
 import { girisYap, type GirisDurumu } from "@/actions/kimlik";
 
-function GonderButonu() {
+function GonderButonu({ kilitli }: { kilitli?: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || kilitli}
       className="h-14 w-full rounded-lg bg-blue-700 text-lg font-bold text-white transition-colors hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-300 disabled:bg-neutral-400"
     >
-      {pending ? "Giriş yapılıyor…" : "GİRİŞ YAP"}
+      {pending ? "Giriş yapılıyor…" : kilitli ? "GEÇİCİ OLARAK ENGELLENDİ" : "GİRİŞ YAP"}
     </button>
   );
 }
@@ -26,9 +26,18 @@ export function GirisFormu() {
       {durum.hata && (
         <div
           role="alert"
-          className="rounded-lg border-2 border-red-600 bg-red-50 px-4 py-3 text-base font-semibold text-red-800"
+          className={`rounded-lg border-2 px-4 py-3 text-base font-semibold ${
+            durum.kilitli
+              ? "border-amber-500 bg-amber-50 text-amber-900"
+              : "border-red-600 bg-red-50 text-red-800"
+          }`}
         >
           {durum.hata}
+          {durum.kilitli && (
+            <p className="mt-1 text-sm font-normal">
+              Şifrenizi hatırlamıyorsanız yöneticinize başvurun.
+            </p>
+          )}
         </div>
       )}
 
@@ -77,7 +86,7 @@ export function GirisFormu() {
         )}
       </div>
 
-      <GonderButonu />
+      <GonderButonu kilitli={durum.kilitli} />
     </form>
   );
 }
