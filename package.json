@@ -14,7 +14,9 @@
     "db:reset": "prisma migrate reset",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "kurulum": "prisma generate && prisma migrate deploy && prisma db seed"
+    "kurulum": "prisma generate && prisma migrate deploy && prisma db seed",
+    "yedek": "bash scripts/yedekle.sh",
+    "yedek:listele": "ls -lht yedekler/*.sql 2>/dev/null || echo \"Henüz yedek yok.\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

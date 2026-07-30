@@ -394,7 +394,57 @@ yazmaya iter — uzunluk daha etkili bir koruma.
    yoksa tarayıcıdan giriş yapılamaz. Uygulama başlangıçta uyarı verir
 3. `AUTH_SECRET`'i yeniden üretin: `npx auth secret`
 4. Seed hesaplarının şifrelerini değiştirin (varsayılanlar bu depoda yazılı)
-5. Veritabanı yedeklemesi kurun — şu an tek kopya var
+5. Günlük yedeklemeyi otomatikleştirin (aşağıya bakın)
+
+## Yedekleme
+
+Kapsam bilerek küçük: **günde bir dosya, son 7 gün.** Uzun geçmiş arşivi hedeflenmiyor —
+amaç gün içinde kazara veri kaybında (yanlış komut, disk hatası, konteynerin silinmesi)
+o günün vardiya ve park kayıtlarını kurtarabilmek.
+
+```bash
+npm run yedek            # yedek al
+npm run yedek:listele    # mevcut yedekleri gör
+```
+
+Yedekler `yedekler/` klasörüne yazılır ve **git'e girmez** — plaka ve telefon kişisel
+veridir (KVKK).
+
+### Geri yükleme
+
+```bash
+# DİKKAT: mevcut veriyi siler.
+docker exec -i otopark-db psql -U otopark -d otopark_dev < yedekler/otopark_TARIH.sql
+```
+
+Yedek dosyası `--clean --if-exists` ile alındığı için mevcut tabloları önce temizler,
+hata vermez.
+
+> **Yedeklemeyi test edin.** Geri yüklenemeyen yedek, yedek değildir. Gerçek veriye
+> dokunmadan denemek için geçici bir veritabanı kullanın:
+> ```bash
+> docker exec otopark-db psql -U otopark -d postgres -c "CREATE DATABASE yedek_testi;"
+> docker exec -i otopark-db psql -U otopark -d yedek_testi < yedekler/DOSYA.sql
+> docker exec otopark-db psql -U otopark -d yedek_testi -c 'SELECT count(*) FROM "ParkKaydi";'
+> docker exec otopark-db psql -U otopark -d postgres -c "DROP DATABASE yedek_testi;"
+> ```
+
+### Otomatikleştirme (macOS)
+
+Her gün 23:30'da yedek almak için:
+
+```bash
+crontab -e
+```
+
+Şu satırı ekleyin (yolu kendi kurulumunuza göre düzeltin):
+
+```
+30 23 * * * cd /Users/KULLANICI/otopark && /bin/bash scripts/yedekle.sh >> yedekler/yedek.log 2>&1
+```
+
+Bilgisayar o saatte kapalıysa cron çalışmaz. Sürekli açık değilse gün sonunda
+`npm run yedek` çalıştırmayı vardiya kapatma alışkanlığına ekleyin.
 
 ## KVKK
 
