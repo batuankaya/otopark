@@ -1,16 +1,18 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 
 import { MARKALAR, markaModelleri } from "@/lib/araclar";
 
 /**
  * Marka ve model seçimi.
  *
- * Katalogdan seçim hızlıdır (görevli yazmak zorunda kalmaz) ama katalog asla
- * kısıtlayıcı değildir: listede olmayan araç için "Listede yok — elle yaz"
- * seçeneği her zaman vardır. Sahada beklenmedik bir araç geldiğinde kayıt
- * yapılamaması, gevşek veriden daha kötüdür.
+ * Neden `<select>` değil, `<input list>` (datalist)?
+ * Katalog 74 marka / 890 model içeriyor. Açılır listede bunu kaydırmak sahada
+ * çok yavaş; datalist ise yazdıkça filtreler ("tof" → Tofaş) ve mobilde de
+ * yerel öneri kutusu açar. Ayrıca serbest metin zaten desteklendiği için
+ * listede olmayan araç ek bir düğmeye gerek kalmadan yazılabilir —
+ * katalog asla kısıtlayıcı olmamalı.
  */
 export function MarkaModelSecici({
   marka,
@@ -31,22 +33,16 @@ export function MarkaModelSecici({
 }) {
   const markaId = useId();
   const modelId = useId();
-
-  // Katalogda olmayan bir marka geldiyse (düzenleme, eski kayıt) serbest
-  // metin kipinde aç ki değer görünmeden kaybolmasın.
-  const katalogdaVar = MARKALAR.some((m) => m.ad === marka);
-  const [serbestMarka, setSerbestMarka] = useState(!!marka && !katalogdaVar);
+  const markaListeId = `${markaId}-liste`;
+  const modelListeId = `${modelId}-liste`;
 
   const modeller = markaModelleri(marka);
-  const modelKatalogdaVar = modeller.includes(model);
-  const [serbestModel, setSerbestModel] = useState(!!model && !modelKatalogdaVar);
+  const markaTanindi = modeller.length > 0;
 
   const alanSinifi = (hata?: string) =>
     `h-14 w-full rounded-lg border-2 px-3 text-lg focus:outline-none ${
       hata ? "border-red-600 focus:border-red-700" : "border-neutral-300 focus:border-blue-700"
     }`;
-
-  const ELLE = "__elle__";
 
   return (
     <div className="space-y-3">
@@ -56,60 +52,35 @@ export function MarkaModelSecici({
           Marka {zorunlu && <span className="text-red-700">*</span>}
         </label>
 
-        {serbestMarka ? (
-          <div className="flex gap-2">
-            <input
-              id={markaId}
-              value={marka}
-              onChange={(olay) => onMarkaDegisim(olay.target.value)}
-              placeholder="Marka yazın"
-              autoComplete="off"
-              className={alanSinifi(markaHatasi)}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setSerbestMarka(false);
-                onMarkaDegisim("");
-                onModelDegisim("");
-              }}
-              className="min-h-14 shrink-0 rounded-lg border-2 border-neutral-300 px-3 text-sm font-semibold text-neutral-700"
-            >
-              Listeden
-            </button>
-          </div>
-        ) : (
-          <select
-            id={markaId}
-            value={marka}
-            onChange={(olay) => {
-              if (olay.target.value === ELLE) {
-                setSerbestMarka(true);
-                onMarkaDegisim("");
-                onModelDegisim("");
-                return;
-              }
-              onMarkaDegisim(olay.target.value);
-              onModelDegisim(""); // marka değişince model sıfırlanır
-              setSerbestModel(false);
-            }}
-            className={alanSinifi(markaHatasi)}
-          >
-            <option value="">Seçiniz</option>
-            {MARKALAR.map((m) => (
-              <option key={m.ad} value={m.ad}>
-                {m.ad}
-              </option>
-            ))}
-            <option value={ELLE}>Listede yok — elle yaz</option>
-          </select>
-        )}
+        <input
+          id={markaId}
+          list={markaListeId}
+          value={marka}
+          onChange={(olay) => {
+            onMarkaDegisim(olay.target.value);
+            // Marka değişince model sıfırlanır: eski markanın modeli kalmasın.
+            if (olay.target.value !== marka) onModelDegisim("");
+          }}
+          placeholder="Yazın ya da listeden seçin"
+          autoComplete="off"
+          aria-invalid={!!markaHatasi}
+          className={alanSinifi(markaHatasi)}
+        />
+        <datalist id={markaListeId}>
+          {MARKALAR.map((m) => (
+            <option key={m.ad} value={m.ad} />
+          ))}
+        </datalist>
 
-        {markaHatasi && (
+        {markaHatasi ? (
           <p role="alert" className="mt-1 text-sm font-semibold text-red-700">
             {markaHatasi}
           </p>
-        )}
+        ) : marka && !markaTanindi ? (
+          <p className="mt-1 text-sm text-neutral-600">
+            Listede olmayan marka — olduğu gibi kaydedilecek.
+          </p>
+        ) : null}
       </div>
 
       {/* Model */}
@@ -118,52 +89,28 @@ export function MarkaModelSecici({
           Model {zorunlu && <span className="text-red-700">*</span>}
         </label>
 
-        {serbestModel || serbestMarka || modeller.length === 0 ? (
-          <div className="flex gap-2">
-            <input
-              id={modelId}
-              value={model}
-              onChange={(olay) => onModelDegisim(olay.target.value)}
-              placeholder={marka ? "Model yazın" : "Önce marka seçin"}
-              disabled={!marka && !serbestMarka}
-              autoComplete="off"
-              className={alanSinifi(modelHatasi)}
-            />
-            {modeller.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSerbestModel(false);
-                  onModelDegisim("");
-                }}
-                className="min-h-14 shrink-0 rounded-lg border-2 border-neutral-300 px-3 text-sm font-semibold text-neutral-700"
-              >
-                Listeden
-              </button>
-            )}
-          </div>
-        ) : (
-          <select
-            id={modelId}
-            value={model}
-            onChange={(olay) => {
-              if (olay.target.value === ELLE) {
-                setSerbestModel(true);
-                onModelDegisim("");
-                return;
-              }
-              onModelDegisim(olay.target.value);
-            }}
-            className={alanSinifi(modelHatasi)}
-          >
-            <option value="">Seçiniz</option>
+        <input
+          id={modelId}
+          list={markaTanindi ? modelListeId : undefined}
+          value={model}
+          onChange={(olay) => onModelDegisim(olay.target.value)}
+          placeholder={
+            !marka
+              ? "Önce marka yazın"
+              : markaTanindi
+                ? `${modeller.length} model — yazın ya da seçin`
+                : "Model yazın"
+          }
+          autoComplete="off"
+          aria-invalid={!!modelHatasi}
+          className={alanSinifi(modelHatasi)}
+        />
+        {markaTanindi && (
+          <datalist id={modelListeId}>
             {modeller.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
+              <option key={m} value={m} />
             ))}
-            <option value={ELLE}>Listede yok — elle yaz</option>
-          </select>
+          </datalist>
         )}
 
         {modelHatasi && (
