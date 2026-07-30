@@ -107,6 +107,7 @@ export async function sonIslemleriAl(adet = 10) {
       ulkeKodu: true,
       marka: true,
       model: true,
+      renk: true,
       notlar: true,
       fisNo: true,
       girisZamani: true,
@@ -114,9 +115,10 @@ export async function sonIslemleriAl(adet = 10) {
       durum: true,
       tahsilEdilenUcret: true,
       odemeYontemi: true,
-      parkAlaniAd: true,
       girisYapan: { select: { adSoyad: true } },
       cikisYapan: { select: { adSoyad: true } },
+      // Plakalı araçlarda marka/model/not araç kaydında durur.
+      arac: { select: { marka: true, model: true, renk: true, notlar: true } },
     },
   });
 }

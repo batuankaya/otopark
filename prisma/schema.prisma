@@ -74,6 +74,12 @@ model Kullanici {
   sifreHash        String
   rol              Rol      @default(GOREVLI)
   aktif            Boolean  @default(true)
+  /// Şifre son ne zaman değişti?
+  ///
+  /// Oturum doğrulamasında kullanılır: bu tarihten ÖNCE açılmış oturumlar
+  /// geçersiz sayılır. Şifre çalındığı için değiştirildiyse saldırganın
+  /// mevcut oturumu da düşsün diye — aksi hâlde 12 saat daha çalışırdı.
+  sifreDegisimi    DateTime @default(now())
   olusturmaTarihi  DateTime @default(now())
   guncellemeTarihi DateTime @updatedAt
 

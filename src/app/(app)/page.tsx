@@ -90,53 +90,109 @@ export default async function AnaPano({
           <ul className="divide-y divide-neutral-200">
             {sonIslemler.map((kayit) => {
               const cikisYapildi = kayit.durum === "CIKTI";
+              // Kayda özel not yoksa aracın kalıcı notu gösterilir.
+              const not = kayit.notlar ?? kayit.arac?.notlar;
               return (
-                <li key={kayit.id} className="flex items-center gap-3 px-4 py-3">
-                  <span
-                    aria-hidden
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg font-bold ${
-                      cikisYapildi ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
-                    }`}
-                  >
-                    {cikisYapildi ? "←" : "→"}
-                  </span>
+                <li key={kayit.id} className="px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <span
+                      aria-hidden
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg font-bold ${
+                        cikisYapildi ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {cikisYapildi ? "←" : "→"}
+                    </span>
 
-                  <div className="min-w-0 flex-1">
-                    <PlakaGoster
-                      plaka={kayit.plaka}
-                      gosterim={kayit.plakaGosterim}
-                      yabanci={kayit.yabanciPlaka}
-                      ulkeKodu={kayit.ulkeKodu}
-                      marka={kayit.marka}
-                      model={kayit.model}
-                      fisNo={kayit.fisNo}
-                      boyut="kucuk"
-                    />
-                    <div className="mt-0.5 truncate text-sm text-neutral-600">
-                      {cikisYapildi
-                        ? `Çıkış ${formatlaSaat(kayit.cikisZamani)} · ${kayit.cikisYapan?.adSoyad ?? ""}`
-                        : `Giriş ${formatlaSaat(kayit.girisZamani)} · ${sureMetni(kayit.girisZamani)}`}
+                    <div className="min-w-0 flex-1">
+                      <PlakaGoster
+                        plaka={kayit.plaka}
+                        gosterim={kayit.plakaGosterim}
+                        yabanci={kayit.yabanciPlaka}
+                        ulkeKodu={kayit.ulkeKodu}
+                        marka={kayit.marka}
+                        model={kayit.model}
+                        fisNo={kayit.fisNo}
+                        boyut="kucuk"
+                      />
+
+                      <div className="mt-1 truncate text-sm text-neutral-700">
+                        {[
+                          kayit.marka ?? kayit.arac?.marka,
+                          kayit.model ?? kayit.arac?.model,
+                          kayit.renk ?? kayit.arac?.renk,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || "Araç bilgisi girilmemiş"}
+                      </div>
+
+                      <div className="mt-0.5 truncate text-sm text-neutral-600">
+                        {cikisYapildi
+                          ? `Çıkış ${formatlaSaat(kayit.cikisZamani)} · ${kayit.cikisYapan?.adSoyad ?? ""}`
+                          : `Giriş ${formatlaSaat(kayit.girisZamani)} · ${sureMetni(kayit.girisZamani)}`}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      {cikisYapildi ? (
+                        <>
+                          <div className="font-bold tabular-nums text-neutral-900">
+                            {formatlaPara(kayit.tahsilEdilenUcret)}
+                          </div>
+                          <div className="text-xs text-neutral-500">
+                            {kayit.odemeYontemi === "NAKIT"
+                              ? "Nakit"
+                              : kayit.odemeYontemi === "KART"
+                                ? "Kart"
+                                : "Ücretsiz"}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-800">
+                          İÇERİDE
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="shrink-0 text-right">
+                  {not && (
+                    <p className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-sm text-amber-900">
+                      {not}
+                    </p>
+                  )}
+
+                  {/* İşlem butonları: içerideki araç için çıkış ve düzenleme,
+                      çıkmış araç için fiş. Görevli panodan ayrılmak zorunda
+                      kalmasın diye burada da erişilebilir. */}
+                  <div className="mt-2 flex gap-2">
                     {cikisYapildi ? (
-                      <>
-                        <div className="font-bold tabular-nums text-neutral-900">
-                          {formatlaPara(kayit.tahsilEdilenUcret)}
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                          {kayit.odemeYontemi === "NAKIT"
-                            ? "Nakit"
-                            : kayit.odemeYontemi === "KART"
-                              ? "Kart"
-                              : "Ücretsiz"}
-                        </div>
-                      </>
+                      <Link
+                        href={`/fis/${kayit.id}`}
+                        className="flex min-h-12 flex-1 items-center justify-center rounded-lg border-2 border-neutral-300 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                      >
+                        Fiş
+                      </Link>
                     ) : (
-                      <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-800">
-                        İÇERİDE
-                      </span>
+                      <>
+                        <Link
+                          href={`/arac-cikisi?kayit=${kayit.id}`}
+                          className="flex min-h-12 flex-1 items-center justify-center rounded-lg bg-blue-700 text-sm font-bold text-white hover:bg-blue-800"
+                        >
+                          ÇIKIŞ YAP
+                        </Link>
+                        <Link
+                          href={`/kayit/${kayit.id}/duzenle`}
+                          className="flex min-h-12 items-center justify-center rounded-lg border-2 border-neutral-300 px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                        >
+                          Düzenle
+                        </Link>
+                        <Link
+                          href={`/fis/${kayit.id}`}
+                          className="flex min-h-12 items-center justify-center rounded-lg border-2 border-neutral-300 px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                        >
+                          Fiş
+                        </Link>
+                      </>
                     )}
                   </div>
                 </li>

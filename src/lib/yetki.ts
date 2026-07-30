@@ -37,11 +37,24 @@ async function dogrulanmisKullanici(): Promise<OturumKullanicisi | null> {
 
   const kullanici = await prisma.kullanici.findUnique({
     where: { id: oturum.user.id },
-    select: { id: true, adSoyad: true, email: true, rol: true, aktif: true },
+    select: {
+      id: true,
+      adSoyad: true,
+      email: true,
+      rol: true,
+      aktif: true,
+      sifreDegisimi: true,
+    },
   });
 
   // Hesap silinmiş ya da pasifleştirilmişse oturum geçersiz sayılır.
   if (!kullanici || !kullanici.aktif) return null;
+
+  // Şifre bu oturum açıldıktan SONRA değiştiyse oturum geçersizdir.
+  // Şifre çalındığı için değiştirildiyse saldırganın açık oturumu da düşer;
+  // aksi hâlde 12 saat daha çalışmaya devam ederdi.
+  const acilis = oturum.user.acilis;
+  if (acilis && kullanici.sifreDegisimi.getTime() > acilis * 1000) return null;
 
   return {
     id: kullanici.id,

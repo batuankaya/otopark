@@ -231,7 +231,9 @@ export async function kullaniciKaydet(
               email: veri.email,
               rol: veri.rol,
               aktif: veri.aktif,
-              ...(sifreHash ? { sifreHash } : {}),
+              // Şifre değişince damga güncellenir: o kullanıcının açık
+              // oturumları anında geçersiz olur.
+              ...(sifreHash ? { sifreHash, sifreDegisimi: new Date() } : {}),
             },
           })
         : await tx.kullanici.create({

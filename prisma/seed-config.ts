@@ -43,13 +43,13 @@ export const kullanicilar = {
     adSoyad: "Sistem Yöneticisi",
     email: "admin@otopark.local",
     sifreEnv: "SEED_ADMIN_SIFRE",
-    varsayilanSifre: "Admin123!",
+    varsayilanSifre: "Otopark2026Admin",
   },
   gorevli: {
     adSoyad: "Ahmet Görevli",
     email: "gorevli@otopark.local",
     sifreEnv: "SEED_GOREVLI_SIFRE",
-    varsayilanSifre: "Gorevli123!",
+    varsayilanSifre: "Otopark2026Gorevli",
   },
 };
 

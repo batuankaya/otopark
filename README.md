@@ -44,7 +44,7 @@ npm run kurulum          # prisma generate + migrate deploy + seed
 npm run dev
 ```
 
-Tarayıcıda <http://localhost:3000> → `admin@otopark.local` / `Admin123!`
+Tarayıcıda <http://localhost:3000> → `admin@otopark.local` / `Otopark2026Admin`
 
 ---
 
@@ -101,8 +101,8 @@ Seed iki hesap oluşturur:
 
 | Rol | E-posta | Şifre |
 |---|---|---|
-| ADMIN | `admin@otopark.local` | `Admin123!` |
-| GOREVLI | `gorevli@otopark.local` | `Gorevli123!` |
+| ADMIN | `admin@otopark.local` | `Otopark2026Admin` |
+| GOREVLI | `gorevli@otopark.local` | `Otopark2026Gorevli` |
 
 > ⚠️ **Bu şifreler herkese açık olarak belgelenmiştir.** Kurulumdan hemen sonra
 > **Ayarlar → Kullanıcılar**'dan değiştirin. Sistemi yerel ağ dışına açacaksanız
@@ -361,6 +361,9 @@ de `hour12: false` ile sabitlendi.
 | CSRF | Next.js Server Actions'ta yerleşik + `sameSite=lax` çerez |
 | Oturum hırsızlığı | `httpOnly` çerez, üretimde `__Secure-` öneki |
 | Yetki atlatma | Middleware + sayfa bazlı çift kontrol, her istekte DB doğrulaması |
+| **Veritabanı erişimi** | Postgres yalnızca `127.0.0.1`'e bağlı, şifre `.env`'den |
+| **Şifre politikası** | En az 10 karakter + harf + rakam, yaygın şifreler reddedilir |
+| **Şifre değişimi** | Şifre değişince o kullanıcının açık oturumları anında düşer |
 
 **Brute force koruması** `src/lib/giris-koruma.ts` içinde. Kritik ayrıntı: kontrol
 `authorize` callback'inde yapılır, Server Action'da değil — `/api/auth/callback/credentials`
@@ -371,7 +374,17 @@ Kilit **son denemeden** itibaren sayılır (saldırgan bekleyip devam edemez) am
 aşımına uğrar — sahadaki görevli kendini kalıcı olarak sistem dışında bırakmasın diye.
 
 **Pasifleştirilen kullanıcı anında düşer:** oturum her istekte veritabanından doğrulanır,
-JWT'ye güvenilmez. Rol değişikliği de anında yürürlüğe girer.
+JWT'ye güvenilmez. Rol değişikliği ve şifre değişimi de anında yürürlüğe girer —
+JWT'de oturum açılış zamanı tutulur, `sifreDegisimi` damgasından eskiyse oturum geçersiz.
+
+**Veritabanı ağa kapalı.** `docker-compose.yml` portu `127.0.0.1:5433`'e bağlar. Bu
+kritik: `"5433:5432"` yazılırsa Docker `0.0.0.0`'a bağlar ve aynı WiFi/hotspot'taki
+herkes veritabanına doğrudan bağlanıp tüm plakaları okuyabilir — uygulamanın tüm
+güvenlik önlemleri atlanmış olur. Şifre de `.env` dosyasından okunur, kodda sabit değil.
+
+**Şifre politikası** karmaşık simge istemez, uzunluk ister (10+ karakter, harf + rakam).
+Simge zorunluluğu sahada tablet klavyesiyle çalışan görevliyi zorlar ve şifreyi bir yere
+yazmaya iter — uzunluk daha etkili bir koruma.
 
 ### Üretime almadan önce
 

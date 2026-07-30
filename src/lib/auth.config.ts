@@ -77,6 +77,10 @@ export const authConfig = {
         token.id = user.id as string;
         token.rol = (user as { rol?: string }).rol ?? "GOREVLI";
         token.adSoyad = (user as { adSoyad?: string }).adSoyad ?? user.name ?? "";
+        // Oturumun açıldığı an: şifre bu tarihten SONRA değiştiyse oturum
+        // geçersiz sayılır (bkz. lib/yetki.ts). Şifre çalındığı için
+        // değiştirildiyse saldırganın açık oturumu da düşsün diye.
+        token.acilis = Math.floor(Date.now() / 1000);
       }
       return token;
     },
@@ -85,6 +89,7 @@ export const authConfig = {
         session.user.id = (token.id as string) ?? "";
         session.user.rol = (token.rol as "ADMIN" | "GOREVLI") ?? "GOREVLI";
         session.user.adSoyad = (token.adSoyad as string) ?? "";
+        session.user.acilis = (token.acilis as number) ?? 0;
       }
       return session;
     },

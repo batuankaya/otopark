@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Kullanici" ADD COLUMN     "sifreDegisimi" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

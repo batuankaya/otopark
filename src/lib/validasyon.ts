@@ -108,6 +108,46 @@ const opsiyonelMetin = (enFazla = 200) =>
 // Kimlik doğrulama
 // ---------------------------------------------------------------------------
 
+/**
+ * Şifre alanı.
+ *
+ * Kural: en az 10 karakter + harf + rakam. Karmaşık simge zorunluluğu
+ * BİLEREK yok — sahada tablet klavyesiyle çalışan görevliyi zorlar ve
+ * kullanıcılar şifreyi bir yere yazmaya başlar, ki bu daha kötüdür.
+ * Uzunluk, karmaşıklıktan daha etkilidir.
+ *
+ * Ayrıca en sık kullanılan şifreler reddedilir: brute force koruması olsa da
+ * saldırganın ilk 8 denemede tutturması hâlâ mümkün.
+ */
+const YAYGIN_SIFRELER = [
+  "12345678",
+  "123456789",
+  "1234567890",
+  "password",
+  "parola123",
+  "sifre123",
+  "qwerty123",
+  "admin123",
+  "otopark123",
+  "11111111",
+  "asdasdasd",
+  "123123123",
+];
+
+const sifreAlani = z
+  .string()
+  .min(10, "Şifre en az 10 karakter olmalıdır.")
+  .max(72, "Şifre en fazla 72 karakter olabilir.")
+  .refine((deger) => /[0-9]/.test(deger), {
+    message: "Şifre en az bir rakam içermelidir.",
+  })
+  .refine((deger) => /[a-zA-ZçğıöşüÇĞİÖŞÜ]/.test(deger), {
+    message: "Şifre en az bir harf içermelidir.",
+  })
+  .refine((deger) => !YAYGIN_SIFRELER.includes(deger.toLowerCase()), {
+    message: "Bu şifre çok yaygın kullanılıyor, başka bir şifre seçin.",
+  });
+
 export const girisSemasi = z.object({
   email: z
     .string({ message: "E-posta zorunludur." })
@@ -122,10 +162,7 @@ export const kullaniciSemasi = z.object({
   email: z.string().trim().toLowerCase().email("Geçerli bir e-posta adresi girin."),
   rol: z.enum(["ADMIN", "GOREVLI"], { message: "Rol seçilmelidir." }),
   aktif: z.coerce.boolean().default(true),
-  sifre: z.preprocess(
-    bosluklarıTemizle,
-    z.string().min(8, "Şifre en az 8 karakter olmalıdır.").max(72, "Şifre en fazla 72 karakter olabilir.").optional(),
-  ),
+  sifre: z.preprocess(bosluklarıTemizle, sifreAlani.optional()),
 });
 
 /** Yeni kullanıcıda şifre zorunlu. */
@@ -137,7 +174,7 @@ export const yeniKullaniciSemasi = kullaniciSemasi.refine((veri) => !!veri.sifre
 export const sifreDegistirSemasi = z
   .object({
     mevcutSifre: z.string().min(1, "Mevcut şifre zorunludur."),
-    yeniSifre: z.string().min(8, "Yeni şifre en az 8 karakter olmalıdır.").max(72),
+    yeniSifre: sifreAlani,
     yeniSifreTekrar: z.string().min(1, "Şifre tekrarı zorunludur."),
   })
   .refine((veri) => veri.yeniSifre === veri.yeniSifreTekrar, {
