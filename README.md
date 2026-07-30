@@ -348,6 +348,41 @@ de `hour12: false` ile sabitlendi.
 
 ---
 
+## Güvenlik
+
+| Önlem | Durum |
+|---|---|
+| SQL injection | Prisma ORM — tek ham SQL sorgusu yok, tüm sorgular parametreli |
+| Girdi doğrulama | Zod — doğrulamasız tek form işleyicisi yok |
+| Şifre saklama | bcrypt, cost 12 |
+| **Brute force** | Hesap 8 / IP 20 başarısız denemede 15 dk kilit |
+| XSS | React kaçışı + `Content-Security-Policy` |
+| Clickjacking | `X-Frame-Options: DENY` + `frame-ancestors 'none'` |
+| CSRF | Next.js Server Actions'ta yerleşik + `sameSite=lax` çerez |
+| Oturum hırsızlığı | `httpOnly` çerez, üretimde `__Secure-` öneki |
+| Yetki atlatma | Middleware + sayfa bazlı çift kontrol, her istekte DB doğrulaması |
+
+**Brute force koruması** `src/lib/giris-koruma.ts` içinde. Kritik ayrıntı: kontrol
+`authorize` callback'inde yapılır, Server Action'da değil — `/api/auth/callback/credentials`
+uç noktasına doğrudan istek atılarak Server Action atlanabiliyor. Geliştirme sırasında bu
+atlatma test edildi ve düzeltildi.
+
+Kilit **son denemeden** itibaren sayılır (saldırgan bekleyip devam edemez) ama zaman
+aşımına uğrar — sahadaki görevli kendini kalıcı olarak sistem dışında bırakmasın diye.
+
+**Pasifleştirilen kullanıcı anında düşer:** oturum her istekte veritabanından doğrulanır,
+JWT'ye güvenilmez. Rol değişikliği de anında yürürlüğe girer.
+
+### Üretime almadan önce
+
+1. `NODE_ENV=production` (`npm run build && npm start`) — güvenli çerezleri,
+   HSTS'i ve sıkı CSP'yi devreye alır
+2. **HTTPS kurun.** Üretim modunda oturum çerezi `Secure` bayrağı taşır; HTTPS
+   yoksa tarayıcıdan giriş yapılamaz. Uygulama başlangıçta uyarı verir
+3. `AUTH_SECRET`'i yeniden üretin: `npx auth secret`
+4. Seed hesaplarının şifrelerini değiştirin (varsayılanlar bu depoda yazılı)
+5. Veritabanı yedeklemesi kurun — şu an tek kopya var
+
 ## KVKK
 
 - Plaka ve müşteri telefonu **kişisel veridir**; tüm rotalar (fiş sayfası dahil) oturum ister
