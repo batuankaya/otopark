@@ -10,6 +10,7 @@ import {
   girisIzniVarMi,
   ipAdresiniAl,
 } from "./giris-koruma";
+import { gelisiKaydet } from "./personel";
 import { prisma } from "./prisma";
 import { girisSemasi } from "./validasyon";
 
@@ -65,8 +66,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        // Başarılı giriş: brute force sayacı sıfırlanır.
-        await denemeleriTemizle(email);
+        // Başarılı giriş: brute force sayacı sıfırlanır ve günün ilk
+        // girişiyse mesai kaydı oluşur (ikisi de giriş akışını bloklamaz).
+        await Promise.all([denemeleriTemizle(email), gelisiKaydet(kullanici.id)]);
 
         return {
           id: kullanici.id,

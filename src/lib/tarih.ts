@@ -187,10 +187,13 @@ export function tarihGirdisiDegeri(tarih: Date = new Date()): string {
 }
 
 /**
- * "HH:MM" biçimindeki saati BUGÜNÜN o saatine çevirir (Europe/Istanbul).
+ * "HH:MM" biçimindeki saati bir günün o saatine çevirir (Europe/Istanbul).
  *
- * Geriye dönük araç girişinde kullanılır: görevli 16:00'da "15:25'te gelmişti"
- * dediğinde tarih sormaya gerek kalmasın diye yalnızca saat alınır.
+ * `referans` verilmezse BUGÜN kullanılır — geriye dönük araç girişinde görevli
+ * 16:00'da "15:25'te gelmişti" dediğinde tarih sormaya gerek kalmasın diye.
+ * Geçmiş bir günün saatini hesaplamak için `referans` verilir (mesai kaydı
+ * düzeltmesi bunu kullanır).
+ *
  * Geçersiz girdide `null` döner.
  */
 export function bugununSaati(hhmm: string, referans: Date = new Date()): Date | null {

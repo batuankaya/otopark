@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 
 import { CiroGrafigi, DolulukGrafigi } from "@/components/rapor-grafikleri";
 import { formatlaPara } from "@/lib/para";
+import { PersonelMesai } from "@/components/personel-mesai";
 import { GIDER_ETIKETLERI } from "@/lib/gider";
+import { gununGelisleri } from "@/lib/personel";
+import { formatlaSaat } from "@/lib/tarih";
 import {
   ciroOzeti,
   giderOzeti,
@@ -29,12 +32,13 @@ export default async function RaporlarSayfasi({
 
   const aralik = tarihAraligiOlustur(donem);
 
-  const [ozet, seri, saatler, gorevliler, giderler] = await Promise.all([
+  const [ozet, seri, saatler, gorevliler, giderler, mesai] = await Promise.all([
     ciroOzeti(aralik),
     gunlukSeri(aralik),
     saatlikDoluluk(aralik),
     gorevliPerformansi(aralik),
     giderOzeti(aralik),
+    gununGelisleri(),
   ]);
 
   const donemSinifi = (aktif: boolean) =>
@@ -137,6 +141,19 @@ export default async function RaporlarSayfasi({
         <h2 className="text-base font-bold text-neutral-900">Saatlik giriş yoğunluğu</h2>
         <DolulukGrafigi veri={saatler} />
       </section>
+
+      {/* Personel geliş saatleri — yalnızca yönetici görür (özlük bilgisi) */}
+      <PersonelMesai
+        gelenler={mesai.girisler.map((g) => ({
+          id: g.id,
+          adSoyad: g.kullanici.adSoyad,
+          rol: g.kullanici.rol,
+          saat: formatlaSaat(g.gelisZamani),
+          duzeltildi: !!g.duzeltenId,
+          eskiSaat: g.duzeltilenEski ? formatlaSaat(g.duzeltilenEski) : null,
+        }))}
+        gelmeyenler={mesai.gelmeyenler.map((k) => ({ id: k.id, adSoyad: k.adSoyad }))}
+      />
 
       {/* Görevli performansı */}
       <section className="rounded-xl border border-neutral-300 bg-white">

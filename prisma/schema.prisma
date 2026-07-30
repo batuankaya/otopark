@@ -89,6 +89,7 @@ model Kullanici {
   actigiVardiyalar     Vardiya[]      @relation("VardiyaAcan")
   kapattigiVardiyalar  Vardiya[]      @relation("VardiyaKapatan")
   giderler             Gider[]
+  personelGirisleri    PersonelGiris[]
   islemGunlukleri      IslemGunlugu[]
 
   @@index([aktif])
@@ -329,6 +330,43 @@ model Vardiya {
 
   @@index([kullaniciId, bitis])
   @@index([baslangic])
+}
+
+// ---------------------------------------------------------------------------
+// Personel geliş kaydı (mesai takibi)
+// ---------------------------------------------------------------------------
+
+/// Bir çalışanın işe geldiği saat.
+///
+/// Uygulamaya ilk giriş yaptığında otomatik oluşturulur — görevlinin ayrıca
+/// bir düğmeye basması gerekmez (basması gerekirse unutulur ve kayıt hiç
+/// oluşmaz). Aynı gün tekrar giriş yaparsa yeni kayıt açılmaz: `(kullaniciId,
+/// gun)` benzersizdir, dolayısıyla günün ilk girişi esas alınır.
+///
+/// Vardiyadan AYRI tutulur: vardiya otoparkın ortak kasasıdır ve tek kişi
+/// açar; mesai ise kişiye özeldir ve her çalışan için kaydedilir.
+///
+/// KVKK: özlük bilgisi sayılır — yalnızca ADMIN görür.
+model PersonelGiris {
+  id String @id @default(cuid())
+
+  kullaniciId String
+  kullanici   Kullanici @relation(fields: [kullaniciId], references: [id])
+
+  /// Fiilen işe geliş anı. Otomatik oluşur; yönetici gerekirse düzeltir.
+  gelisZamani DateTime @default(now())
+  /// Günün İstanbul saatiyle 00:00'ı — "günde bir kayıt" kuralının anahtarı.
+  gun         DateTime
+
+  /// Saat sonradan düzeltildiyse kim düzeltti ve orijinal değer neydi?
+  /// Denetim izi: mesai kaydı ücret hesabını etkileyebilir.
+  duzeltenId    String?
+  duzeltilenEski DateTime?
+
+  olusturmaTarihi DateTime @default(now())
+
+  @@unique([kullaniciId, gun])
+  @@index([gun])
 }
 
 // ---------------------------------------------------------------------------

@@ -367,6 +367,18 @@ export const abonmanSemasi = z
   .transform(plakayiCozumle);
 
 // ---------------------------------------------------------------------------
+// Personel mesai
+// ---------------------------------------------------------------------------
+
+export const personelSaatSemasi = z.object({
+  kayitId: z.string().min(1, "Kayıt bulunamadı."),
+  saat: z
+    .string({ message: "Saat zorunludur." })
+    .trim()
+    .regex(/^\d{1,2}:\d{2}$/, "Saat SS:DD biçiminde olmalıdır. Örnek: 08:30"),
+});
+
+// ---------------------------------------------------------------------------
 // Giderler
 // ---------------------------------------------------------------------------
 

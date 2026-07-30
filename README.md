@@ -396,6 +396,26 @@ yazmaya iter — uzunluk daha etkili bir koruma.
 4. Seed hesaplarının şifrelerini değiştirin (varsayılanlar bu depoda yazılı)
 5. Günlük yedeklemeyi otomatikleştirin (aşağıya bakın)
 
+## Personel geliş saatleri (mesai)
+
+Çalışan uygulamaya giriş yaptığında geliş saati **otomatik** kaydedilir. Ayrı bir
+"işe geldim" düğmesi bilerek yok: basılması gereken düğme unutulur ve o gün hiç kayıt
+oluşmaz — görevli zaten çalışmak için giriş yapmak zorunda.
+
+- Günde kişi başına **tek kayıt**: günün ilk girişi esas alınır, sonraki girişler
+  saati değiştirmez (`(kullaniciId, gun)` benzersiz)
+- **Raporlar** ekranında görünür, geliş sırasına göre numaralı (1., 2., …)
+- **Gelmeyenler** de listelenir — "kim gelmedi" sorusu "kim geldi"den daha kritik
+- Yönetici saati **düzeltebilir**: çalışan 10:00'da gelip 10:15'te giriş yapmış
+  olabilir. Düzeltmede orijinal otomatik kayıt saklanır ve işlem günlüğüne yazılır
+- **Yalnızca ADMIN görür** — mesai özlük bilgisidir (KVKK)
+
+Vardiyadan ayrıdır: vardiya otoparkın ortak kasasıdır ve tek kişi açar; mesai
+kişiye özeldir ve her çalışan için tutulur.
+
+> Şu an yalnızca **geliş** saati tutuluyor. Çıkış/çalışma süresi gerekirse
+> `PersonelGiris` modeline `cikisZamani` eklenerek genişletilebilir.
+
 ## Yedekleme
 
 Kapsam bilerek küçük: **günde bir dosya, son 7 gün.** Uzun geçmiş arşivi hedeflenmiyor —
