@@ -8,6 +8,7 @@
 
 import { redirect } from "next/navigation";
 import { auth } from "./auth";
+import { gelisiKaydet } from "./personel";
 import { prisma } from "./prisma";
 
 export type OturumKullanicisi = {
@@ -55,6 +56,12 @@ async function dogrulanmisKullanici(): Promise<OturumKullanicisi | null> {
   // aksi hâlde 12 saat daha çalışmaya devam ederdi.
   const acilis = oturum.user.acilis;
   if (acilis && kullanici.sifreDegisimi.getTime() > acilis * 1000) return null;
+
+  // Günün ilk temasında mesai kaydı oluşturulur. Yalnızca giriş anında
+  // yapmak yetmiyordu: oturum her istekte tazelendiği için çıkış yapmadan
+  // çalışmaya devam eden kişi ikinci gün hiç giriş yapmıyor ve o günün
+  // kaydı hiç oluşmuyordu. Beklenmez (void) — sayfa açılışını geciktirmesin.
+  void gelisiKaydet(kullanici.id);
 
   return {
     id: kullanici.id,

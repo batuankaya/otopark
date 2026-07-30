@@ -402,13 +402,20 @@ yazmaya iter — uzunluk daha etkili bir koruma.
 "işe geldim" düğmesi bilerek yok: basılması gereken düğme unutulur ve o gün hiç kayıt
 oluşmaz — görevli zaten çalışmak için giriş yapmak zorunda.
 
-- Günde kişi başına **tek kayıt**: günün ilk girişi esas alınır, sonraki girişler
-  saati değiştirmez (`(kullaniciId, gun)` benzersiz)
+- Günde kişi başına **tek kayıt**: günün ilk teması esas alınır, sonrakiler saati
+  değiştirmez (`(kullaniciId, gun)` benzersiz)
+- Kayıt yalnızca giriş anında değil, **her kimlik doğrulamasında** denenir. Oturum
+  12 saatlik ve her istekte tazelendiği için, çıkış yapmadan çalışmaya devam eden
+  biri ikinci gün hiç giriş yapmaz — yalnızca girişe bağlanırsa o günün kaydı hiç
+  oluşmazdı. Gereksiz yazım işlem belleğindeki bir kümeyle engellenir
 - **Raporlar** ekranında görünür, geliş sırasına göre numaralı (1., 2., …)
 - **Gelmeyenler** de listelenir — "kim gelmedi" sorusu "kim geldi"den daha kritik
 - Yönetici saati **düzeltebilir**: çalışan 10:00'da gelip 10:15'te giriş yapmış
   olabilir. Düzeltmede orijinal otomatik kayıt saklanır ve işlem günlüğüne yazılır
 - **Yalnızca ADMIN görür** — mesai özlük bilgisidir (KVKK)
+
+Gün sınırı **Europe/Istanbul gece yarısı**: 00:00'da yeni güne geçilir, geçmiş günlerin
+kayıtları veritabanında kalır (ekranda yalnızca bugün gösterilir).
 
 Vardiyadan ayrıdır: vardiya otoparkın ortak kasasıdır ve tek kişi açar; mesai
 kişiye özeldir ve her çalışan için tutulur.

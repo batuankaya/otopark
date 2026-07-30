@@ -13,24 +13,52 @@ import { prisma } from "./prisma";
 import { gunBaslangici } from "./tarih";
 
 /**
+ * Bugün kaydı yazılmış kullanıcılar — gereksiz veritabanı yazımını önler.
+ *
+ * Kayıt yalnızca giriş anında oluşturulmak yetmiyor: oturum 12 saatlik ve her
+ * istekte tazeleniyor, yani çıkış yapmadan çalışmaya devam eden biri ikinci
+ * gün hiç giriş yapmaz ve o günün geliş kaydı oluşmaz. Bu yüzden kayıt her
+ * kimlik doğrulamasında denenir.
+ *
+ * Her istekte veritabanına yazmamak için işlem belleğinde tutulur. Uygulama
+ * yeniden başlarsa küme boşalır ve kullanıcı başına bir fazladan `upsert`
+ * yapılır — zararsız, çünkü `update: {}` mevcut kaydı değiştirmez.
+ */
+const bugunKaydedilenler = new Set<string>();
+
+/**
  * Günün ilk girişini kaydeder.
  *
- * Aynı gün tekrar giriş yapılırsa yeni kayıt oluşmaz — `(kullaniciId, gun)`
- * benzersiz olduğu için `upsert` sessizce mevcut kaydı bırakır. Böylece
- * "geliş saati" günün ilk girişi olarak sabit kalır.
+ * Aynı gün tekrar çağrılırsa saat DEĞİŞMEZ — `(kullaniciId, gun)` benzersiz
+ * olduğu için `upsert` mevcut kaydı olduğu gibi bırakır. Böylece "geliş saati"
+ * günün ilk temasında sabitlenir.
  *
- * Hata durumunda giriş akışı DURMAZ: mesai kaydı tutulamadı diye çalışan
- * sisteme girememesi kabul edilemez.
+ * Hata durumunda akış DURMAZ: mesai kaydı tutulamadı diye çalışanın sisteme
+ * girememesi ya da sayfanın açılmaması kabul edilemez.
  */
 export async function gelisiKaydet(kullaniciId: string): Promise<void> {
+  const gun = gunBaslangici();
+  const anahtar = `${kullaniciId}:${gun.getTime()}`;
+
+  // Bu süreçte bugün için zaten yazıldıysa veritabanına hiç gitme.
+  if (bugunKaydedilenler.has(anahtar)) return;
+
   try {
-    const gun = gunBaslangici();
     await prisma.personelGiris.upsert({
       where: { kullaniciId_gun: { kullaniciId, gun } },
       create: { kullaniciId, gun, gelisZamani: new Date() },
-      // Zaten kayıt varsa dokunulmaz: günün İLK girişi esastır.
+      // Zaten kayıt varsa dokunulmaz: günün İLK teması esastır.
       update: {},
     });
+
+    bugunKaydedilenler.add(anahtar);
+
+    // Küme sınırsız büyümesin: gün değişince eski anahtarlar gereksizdir.
+    if (bugunKaydedilenler.size > 200) {
+      for (const eski of bugunKaydedilenler) {
+        if (!eski.endsWith(`:${gun.getTime()}`)) bugunKaydedilenler.delete(eski);
+      }
+    }
   } catch (hata) {
     console.error("Personel geliş kaydı oluşturulamadı:", hata);
   }
