@@ -122,6 +122,9 @@ model Arac {
   abonmanlar    Abonman[]
 
   @@index([plaka])
+  /// Marka/model/renk/not araması aracın kendi kaydında da yapılıyor
+  /// (plakalı araçlarda bu bilgiler burada durur).
+  @@index([marka(ops: raw("gin_trgm_ops")), model(ops: raw("gin_trgm_ops")), renk(ops: raw("gin_trgm_ops")), notlar(ops: raw("gin_trgm_ops"))], type: Gin, map: "Arac_metin_trgm_idx")
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +282,13 @@ model ParkKaydi {
   /// İndeks olmadan her açılışta tüm tablo taranıp sıralanıyordu: 55 bin
   /// kayıtta 19 ms, ve kayıt sayısıyla doğrusal büyüyor.
   @@index([guncellemeTarihi(sort: Desc)])
+  /// Plaka aramasında eşleşen araçlar üzerinden kayda ulaşılıyor.
+  @@index([aracId])
+  /// Arama "içinde geçen" (LIKE %x%) biçiminde yapılıyor; normal B-tree
+  /// indeksi bunu kullanamaz, trigram (GIN) kullanabilir. 55 bin kayıtta
+  /// tam plaka araması 110 ms → 3.6 ms.
+  @@index([plaka(ops: raw("gin_trgm_ops"))], type: Gin, map: "ParkKaydi_plaka_trgm_idx")
+  @@index([marka(ops: raw("gin_trgm_ops")), model(ops: raw("gin_trgm_ops")), renk(ops: raw("gin_trgm_ops")), notlar(ops: raw("gin_trgm_ops"))], type: Gin, map: "ParkKaydi_metin_trgm_idx")
 }
 
 // ---------------------------------------------------------------------------
