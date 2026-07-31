@@ -183,7 +183,12 @@ model Ayar {
   /// Bu saatte açık vardiya kapanır ve yerine yenisi açılır; kasa devri
   /// kesintisiz sürsün diye yeni vardiyanın açılış kasası, kapanan
   /// vardiyanın "kasada olması gereken" tutarıdır.
-  vardiyaSifirlamaSaati Int  @default(12)
+  ///
+  /// Varsayılan gece yarısıdır: sıfırlama saati çalışma saatlerinin İÇİNE
+  /// düşerse vardiya iş gününün ortasında kapanıp yeniden açılır ve tek bir
+  /// gün iki ayrı kasa defterine bölünür. Otopark 08:00–20:30 çalıştığı için
+  /// 00:00 bu aralığın dışında kalan güvenli saattir.
+  vardiyaSifirlamaSaati Int  @default(0)
   guncellemeTarihi DateTime @updatedAt
 }
 

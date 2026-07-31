@@ -280,7 +280,7 @@ Vardiya kullanıcı başına değil, **otopark genelinde tektir**.
 
 #### Günlük otomatik sıfırlama
 
-Vardiya her gün **12:00'de** (Ayarlar → *Vardiya sıfırlama saati*, 0–23) kendiliğinden
+Vardiya her gün **00:00'da** (Ayarlar → *Vardiya sıfırlama saati*, 0–23) kendiliğinden
 sıfırlanır:
 
 - Açık vardiya o saatte kapanır, yerine yenisi açılır — görevlinin bir şey yapması gerekmez
@@ -291,6 +291,11 @@ sıfırlanır:
 - Görevli isterse günün herhangi bir anında vardiyayı elle de kapatabilir; sıfırlama saati
   yalnızca *unutulduğunda* devreye giren güvenlik ağıdır
 - Vardiya ekranında bir sonraki sıfırlamanın ne zaman olacağı yazar
+
+> **Sıfırlama saati çalışma saatlerinin DIŞINDA olmalı.** Otopark 08:00–20:30 açık;
+> saat örneğin 12:00 yapılırsa vardiya iş gününün ortasında kapanıp yeniden açılır ve
+> tek bir gün iki ayrı kasa defterine bölünür. Kasa devri yine doğru çalışır ama gün
+> sonu mutabakatı iki parçadan toplanmak zorunda kalır. Varsayılan bu yüzden 00:00.
 
 Sıfırlama **zamanlanmış görevle (cron) yapılmaz** — makine kapalıyken çalışmayan bir cron
 sıfırlamayı sessizce atlar. Bunun yerine açık vardiya her sorgulandığında sınırın geçip

@@ -21,7 +21,13 @@ import { prisma } from "./prisma";
 import { formatlaTarihSaat, vardiyaGunBaslangici } from "./tarih";
 import { vardiyaOzetiHesapla } from "./vardiya-ozet";
 
-export const VARSAYILAN_SIFIRLAMA_SAATI = 12;
+/**
+ * Ayar okunamazsa kullanılan sıfırlama saati — gece yarısı.
+ *
+ * Çalışma saatlerinin (08:00–20:30) dışında olmak zorunda: aksi hâlde vardiya
+ * gün ortasında kapanır ve tek bir iş günü iki kasa defterine bölünür.
+ */
+export const VARSAYILAN_SIFIRLAMA_SAATI = 0;
 
 /**
  * Sıfırlama saati ayarı — kısa süreli işlem içi önbellekle.
