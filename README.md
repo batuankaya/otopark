@@ -119,13 +119,43 @@ Seed ayrıca 1 tarife, 6 kapanmış vardiya ve **30 örnek park kaydı**
 |---|---|
 | `npm run dev` | Geliştirme sunucusu |
 | `npm run build` / `npm start` | Üretim derlemesi / sunucu |
-| `npm test` | Birim testleri (ücret motoru + plaka doğrulama) |
+| `npm test` | Tüm testler (birim + entegrasyon) |
+| `npm run test:birim` | Yalnızca birim testleri — veritabanı gerekmez |
+| `npm run test:entegrasyon` | Yalnızca entegrasyon testleri — PostgreSQL gerekir |
 | `npm run test:izle` | Testleri izleme modunda çalıştırır |
 | `npm run kurulum` | generate + migrate deploy + seed |
 | `npm run db:migrate` | Yeni migration oluşturur |
 | `npm run db:reset` | Veritabanını sıfırlar ve seed'i çalıştırır |
 | `npm run db:studio` | Prisma Studio (veri görüntüleyici) |
 | `npm run lint` | ESLint |
+
+---
+
+## Testler
+
+İki küme var (`vitest.config.ts` içinde `projects` olarak tanımlı):
+
+**Birim** (`tests/*.test.ts`) — saf iş kuralları: ücret motoru, plaka doğrulama,
+tarih/vardiya günü hesapları, para ayrıştırma, zod şemaları, Türkçe sıralama.
+Dış bağımlılık yok.
+
+> Bu küme **bilerek `TZ=America/Los_Angeles`** ile koşar. Uygulama her yerde
+> `Europe/Istanbul`'u açıkça belirtiyor; bu doğruysa sunucunun saat dilimi hiçbir
+> sonucu değiştirmemeli. Yerel saate sızan bir bağımlılık olursa testler kırılır.
+
+**Entegrasyon** (`tests/entegrasyon/*.test.ts`) — Server Action'ları **gerçek
+PostgreSQL** üzerinde uçtan uca çalıştırır. Transaction'lar, kısmi unique
+index'ler (mükerrer giriş / tek açık vardiya) ve `Decimal` aritmetiği taklit
+edilemez; kasa devrinin doğruluğu ancak burada kanıtlanabilir.
+
+- Ayrı bir veritabanı kullanır: **`otopark_test`**. Adres `.env` içindeki
+  `DATABASE_URL`'den türetilir, yalnızca veritabanı adı değişir — şifre
+  sürüm kontrolüne girmez.
+- Veritabanı yoksa ilk çalıştırmada kendisi oluşturulur ve migrasyonlar uygulanır.
+  Ek kurulum adımı yok, `npm test` yeterli.
+- **Güvenlik kilidi:** testler her dosyada tüm tabloları boşalttığı için,
+  hedef veritabanının adı `otopark_test` değilse çalışmayı reddeder
+  (`tests/entegrasyon/veritabani.ts`). Geliştirme verisine yazmak imkânsızdır.
 
 ---
 

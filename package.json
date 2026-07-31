@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:izle": "vitest",
+    "test:birim": "vitest run --project birim",
+    "test:entegrasyon": "vitest run --project entegrasyon",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
