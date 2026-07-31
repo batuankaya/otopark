@@ -157,6 +157,12 @@ edilemez; kasa devrinin doğruluğu ancak burada kanıtlanabilir.
   hedef veritabanının adı `otopark_test` değilse çalışmayı reddeder
   (`tests/entegrasyon/veritabani.ts`). Geliştirme verisine yazmak imkânsızdır.
 
+`tests/entegrasyon/gun-simulasyonu.test.ts` gerçek bir iş gününü baştan sona
+oynatır (08:00 açılış → 20:30 kapanış): araç giriş/çıkışları, nakit ve kartlı
+tahsilat, giderler, indirimli çıkış ve gün sonu kasa mutabakatı. Ayrıca günün
+tek vardiyada tamamlandığını doğrular — sıfırlama saati yanlışlıkla çalışma
+saatlerinin içine çekilirse bu test kırılır.
+
 ---
 
 ## İş kuralları
@@ -512,20 +518,24 @@ hata vermez.
 
 ### Otomatikleştirme (macOS)
 
-Her gün 23:30'da yedek almak için:
+**cron değil launchd kullanılır.** Sebebi: bilgisayar o saatte uykudaysa cron
+çalıştırmayı sessizce atlar, launchd ise uyanır uyanmaz telafi eder. Dizüstü
+bilgisayarda fark budur.
+
+Kurulu iş: `~/Library/LaunchAgents/com.otopark.yedekle.plist` — her gün 03:00.
 
 ```bash
-crontab -e
+launchctl list | grep otopark          # yüklü mü?
+launchctl kickstart -k gui/$(id -u)/com.otopark.yedekle   # elle tetikle
+cat yedekler/yedekle.log               # son çalıştırmanın çıktısı
 ```
 
-Şu satırı ekleyin (yolu kendi kurulumunuza göre düzeltin):
+Plist iki tuzağı kapatır:
 
-```
-30 23 * * * cd /Users/KULLANICI/otopark && /bin/bash scripts/yedekle.sh >> yedekler/yedek.log 2>&1
-```
-
-Bilgisayar o saatte kapalıysa cron çalışmaz. Sürekli açık değilse gün sonunda
-`npm run yedek` çalıştırmayı vardiya kapatma alışkanlığına ekleyin.
+- **PATH** — launchd asgari bir ortamla çalışır; `docker` PATH'te olmazsa script
+  "konteyner çalışmıyor" deyip çıkar. Plist içinde PATH açıkça tanımlıdır.
+- **Sessiz başarısızlık** — çıktı ve hatalar `yedekler/yedekle.log`'a yazılır,
+  böylece yedeğin alınıp alınmadığı sonradan doğrulanabilir.
 
 ## KVKK
 
