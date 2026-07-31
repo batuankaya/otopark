@@ -275,6 +275,10 @@ model ParkKaydi {
   @@index([cikisVardiyaId])
   @@index([girisYapanId])
   @@index([parkAlaniId, durum])
+  /// Ana panodaki "son işlemler" listesi bu alana göre sıralanıyor.
+  /// İndeks olmadan her açılışta tüm tablo taranıp sıralanıyordu: 55 bin
+  /// kayıtta 19 ms, ve kayıt sayısıyla doğrusal büyüyor.
+  @@index([guncellemeTarihi(sort: Desc)])
 }
 
 // ---------------------------------------------------------------------------
