@@ -103,17 +103,27 @@ export function yirmiDortSaatiAstiMi(girisZamani: Date | string, simdi: Date = n
  * Verilen anın Europe/Istanbul'daki takvim bileşenlerini verir.
  * Sunucunun kendi saat dilimi ne olursa olsun doğru sonuç üretir.
  */
+/**
+ * Modül düzeyinde tutulur — dosyadaki diğer biçimlendiriciler gibi.
+ *
+ * Önceden her çağrıda yeniden kuruluyordu ve `Intl.DateTimeFormat` kurulumu
+ * biçimlemenin kendisinden ~10 kat pahalı. `gunBaslangici` bunu iki kez,
+ * `vardiyaGunBaslangici` altı kez çağırıyor; o zincir de her istekte
+ * (oturum → açık vardiya) işlediği için maliyet her sayfaya yansıyordu.
+ */
+const parcaBicimi = new Intl.DateTimeFormat("en-CA", {
+  timeZone: ZAMAN_DILIMI,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
 function istanbulParcalari(tarih: Date) {
-  const parcalar = new Intl.DateTimeFormat("en-CA", {
-    timeZone: ZAMAN_DILIMI,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(tarih);
+  const parcalar = parcaBicimi.formatToParts(tarih);
 
   const al = (tip: string) => Number(parcalar.find((p) => p.type === tip)?.value ?? "0");
   return {
