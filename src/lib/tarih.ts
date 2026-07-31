@@ -152,6 +152,42 @@ export function gunEkle(tarih: Date, gun: number): Date {
   return new Date(tarih.getTime() + gun * 24 * 60 * 60 * 1000);
 }
 
+// ---------------------------------------------------------------------------
+// Vardiya günü — takvim gününden farklıdır
+// ---------------------------------------------------------------------------
+
+/**
+ * Yürürlükteki vardiya gününün başlangıcı.
+ *
+ * Vardiya gece yarısında değil, işletmenin belirlediği saatte (varsayılan
+ * 12:00) sıfırlanır. Bu fonksiyon, verilen ana denk gelen SON sıfırlama
+ * anını verir: saat 10:00'da bakılırsa DÜNKÜ 12:00, 14:00'te bakılırsa
+ * BUGÜNKÜ 12:00 döner.
+ *
+ * `sifirlamaSaati = 0` verilirse sınır gece yarısına düşer ve davranış
+ * `gunBaslangici` ile aynı olur.
+ */
+export function vardiyaGunBaslangici(sifirlamaSaati: number, tarih: Date = new Date()): Date {
+  const saat = Math.min(23, Math.max(0, Math.trunc(sifirlamaSaati)));
+  const bugunSinir = new Date(gunBaslangici(tarih).getTime() + saat * 3_600_000);
+
+  if (tarih.getTime() >= bugunSinir.getTime()) return bugunSinir;
+
+  // Bugünün sıfırlama saati henüz gelmedi → yürürlükteki vardiya günü dün başladı.
+  // Gece yarısından 12 saat geriye gidip o günün başlangıcını almak, saat
+  // farkı değişimlerine karşı gün atlamaktan daha güvenlidir.
+  const dun = gunBaslangici(new Date(gunBaslangici(tarih).getTime() - 12 * 3_600_000));
+  return new Date(dun.getTime() + saat * 3_600_000);
+}
+
+/** Bir sonraki otomatik vardiya sıfırlaması. */
+export function sonrakiVardiyaSifirlamasi(
+  sifirlamaSaati: number,
+  tarih: Date = new Date(),
+): Date {
+  return new Date(vardiyaGunBaslangici(sifirlamaSaati, tarih).getTime() + 24 * 3_600_000);
+}
+
 export type TarihAraligi = { baslangic: Date; bitis: Date; etiket: string };
 
 /** Raporlarda kullanılan hazır aralıklar. */

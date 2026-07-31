@@ -178,6 +178,12 @@ model Ayar {
   telefon          String?
   toplamKapasite   Int      @default(100)
   fisAltNotu       String?
+  /// Vardiyanın her gün otomatik sıfırlandığı saat (0–23, İstanbul saati).
+  ///
+  /// Bu saatte açık vardiya kapanır ve yerine yenisi açılır; kasa devri
+  /// kesintisiz sürsün diye yeni vardiyanın açılış kasası, kapanan
+  /// vardiyanın "kasada olması gereken" tutarıdır.
+  vardiyaSifirlamaSaati Int  @default(12)
   guncellemeTarihi DateTime @updatedAt
 }
 
@@ -321,6 +327,13 @@ model Vardiya {
   toplamKart  Decimal? @db.Decimal(10, 2)
   /// kapanisKasa - (acilisKasa + toplamNakit). Eksi ise kasa açığı.
   fark        Decimal? @db.Decimal(10, 2)
+
+  /// Günlük sıfırlama saatinde sistem tarafından kapatıldı mı?
+  ///
+  /// Otomatik kapanışta kasa sayımı yapılmaz: `kapanisKasa` ve `fark` boş
+  /// kalır, dolayısıyla "kasa açığı" uyarısı üretilmez. Raporda elle
+  /// kapatılan vardiyalardan ayırt edilebilmesi için işaretlenir.
+  otomatikKapanis Boolean @default(false)
 
   notlar String?
 

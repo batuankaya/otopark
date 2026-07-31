@@ -16,6 +16,7 @@ import {
   tarifeSemasi,
   type AlanHatalari,
 } from "@/lib/validasyon";
+import { sifirlamaOnbelleginiTemizle } from "@/lib/vardiya-sifirlama";
 import { oturumAl } from "@/lib/yetki";
 
 export type AyarDurumu = {
@@ -60,17 +61,26 @@ export async function ayarlariKaydet(
       kullaniciId: kontrol.kullanici.id,
       islemTipi: "AYAR_DEGISIKLIGI",
       eskiDeger: eski
-        ? { otoparkAdi: eski.otoparkAdi, toplamKapasite: eski.toplamKapasite }
+        ? {
+            otoparkAdi: eski.otoparkAdi,
+            toplamKapasite: eski.toplamKapasite,
+            vardiyaSifirlamaSaati: eski.vardiyaSifirlamaSaati,
+          }
         : undefined,
       yeniDeger: {
         otoparkAdi: ayrisma.data.otoparkAdi,
         toplamKapasite: ayrisma.data.toplamKapasite,
+        vardiyaSifirlamaSaati: ayrisma.data.vardiyaSifirlamaSaati,
       },
       aciklama: "Genel ayarlar güncellendi",
     });
   });
 
+  // Sıfırlama saati işlem içi önbellekte tutuluyor; yeni değer anında geçerli olsun.
+  sifirlamaOnbelleginiTemizle();
+
   revalidatePath("/ayarlar");
+  revalidatePath("/vardiya");
   revalidatePath("/");
   return { basarili: true, bilgi: "Ayarlar kaydedildi." };
 }

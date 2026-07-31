@@ -248,6 +248,25 @@ Vardiya kullanıcı başına değil, **otopark genelinde tektir**.
 > Not: Ortak kasa modelinde kasa açığının hangi görevliden kaynaklandığı ayrıştırılamaz.
 > Kişi bazlı sorumluluk isterseniz her görevliye ayrı vardiya modeline dönmek gerekir.
 
+#### Günlük otomatik sıfırlama
+
+Vardiya her gün **12:00'de** (Ayarlar → *Vardiya sıfırlama saati*, 0–23) kendiliğinden
+sıfırlanır:
+
+- Açık vardiya o saatte kapanır, yerine yenisi açılır — görevlinin bir şey yapması gerekmez
+- **Kasa devreder**: yeni vardiyanın açılış kasası, kapanan vardiyanın "kasada olması
+  gereken" tutarıdır. Para fiziksel olarak kasada kalır, yalnızca defter yeni sayfaya geçer
+- Otomatik kapanışta **kasa sayılmaz**: `kapanisKasa` ve `fark` boş kalır, uydurma bir kasa
+  açığı raporlanmaz. Bu vardiyalar listede `OTOMATİK · kasa sayılmadı` rozetiyle görünür
+- Görevli isterse günün herhangi bir anında vardiyayı elle de kapatabilir; sıfırlama saati
+  yalnızca *unutulduğunda* devreye giren güvenlik ağıdır
+- Vardiya ekranında bir sonraki sıfırlamanın ne zaman olacağı yazar
+
+Sıfırlama **zamanlanmış görevle (cron) yapılmaz** — makine kapalıyken çalışmayan bir cron
+sıfırlamayı sessizce atlar. Bunun yerine açık vardiya her sorgulandığında sınırın geçip
+geçmediğine bakılır; uygulama üç gün kapalı kalsa bile ilk açılışta eski vardiya
+*geçmişteki doğru saatte* kapatılmış olur (`src/lib/vardiya-sifirlama.ts`).
+
 ### Geriye dönük giriş
 
 Görevli aracı kaydetmeyi unutursa giriş saatini elle girebilir:

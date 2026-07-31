@@ -34,6 +34,7 @@ export default async function AyarlarSayfasi() {
           telefon: ayar.telefon,
           toplamKapasite: ayar.toplamKapasite,
           fisAltNotu: ayar.fisAltNotu,
+          vardiyaSifirlamaSaati: ayar.vardiyaSifirlamaSaati,
         }}
       />
 

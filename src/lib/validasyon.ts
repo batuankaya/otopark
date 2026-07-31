@@ -445,6 +445,19 @@ export const ayarSemasi = z.object({
     .min(1, "Kapasite en az 1 olmalıdır.")
     .max(100000),
   fisAltNotu: opsiyonelMetin(200),
+  // Vardiyanın otomatik sıfırlandığı saat. 0 = gece yarısı, 12 = öğlen.
+  //
+  // Boş değer BİLEREK reddedilir: `z.coerce.number("")` sıfır üretir ve
+  // sıfırlama saati sessizce gece yarısına kayar. Sıfır ancak açıkça
+  // yazıldığında kabul edilmeli.
+  vardiyaSifirlamaSaati: z.preprocess(
+    (deger) => (typeof deger === "string" && deger.trim() === "" ? undefined : deger),
+    z.coerce
+      .number({ message: "Sıfırlama saati 0 ile 23 arasında bir sayı olmalıdır." })
+      .int("Sıfırlama saati tam sayı olmalıdır (örn. 12).")
+      .min(0, "Sıfırlama saati 0 ile 23 arasında olmalıdır.")
+      .max(23, "Sıfırlama saati 0 ile 23 arasında olmalıdır."),
+  ),
 });
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import { redirect } from "next/navigation";
 import { auth } from "./auth";
 import { gelisiKaydet } from "./personel";
 import { prisma } from "./prisma";
+import { vardiyaSifirlamasiniUygula } from "./vardiya-sifirlama";
 
 export type OturumKullanicisi = {
   id: string;
@@ -110,8 +111,14 @@ export async function oturumAl(): Promise<OturumKullanicisi | null> {
  * vardiyayı açtığında diğerleri ayrıca açmaz, hepsi aynı kasaya işlem yapar.
  * Veritabanı da bunu `vardiya_tek_acik_uq` kısmi unique index'i ile garanti
  * eder — iki görevli aynı anda açmaya çalışsa bile yalnızca biri başarılı olur.
+ *
+ * Sorgudan ÖNCE günlük sıfırlama kontrolü yapılır: sıfırlama saati geçmişse
+ * eski vardiya kapatılıp yenisi açılır, böylece her çağıran güncel vardiyayı
+ * görür. Zamanlanmış göreve gerek kalmaz — gerekçesi `vardiya-sifirlama.ts`de.
  */
 export async function acikVardiyayiBul() {
+  await vardiyaSifirlamasiniUygula();
+
   return prisma.vardiya.findFirst({
     where: { bitis: null },
     include: { kullanici: { select: { id: true, adSoyad: true } } },

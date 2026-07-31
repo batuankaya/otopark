@@ -2,10 +2,11 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { VardiyaAcFormu, VardiyaKapatFormu } from "@/components/vardiya-formlari";
-import { vardiyaOzetiHesapla } from "@/actions/vardiya";
+import { vardiyaOzetiHesapla } from "@/lib/vardiya-ozet";
 import { formatlaPara, sayiyaCevir } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
-import { formatlaTarihSaat, sureMetni } from "@/lib/tarih";
+import { formatlaTarihSaat, sonrakiVardiyaSifirlamasi, sureMetni } from "@/lib/tarih";
+import { sifirlamaSaatiniAl } from "@/lib/vardiya-sifirlama";
 import { acikVardiyayiBul, oturumZorunlu } from "@/lib/yetki";
 
 export const metadata: Metadata = { title: "Vardiya" };
@@ -15,7 +16,7 @@ export default async function VardiyaSayfasi() {
   const kullanici = await oturumZorunlu();
   const acikVardiya = await acikVardiyayiBul();
 
-  const [ozet, gecmisVardiyalar] = await Promise.all([
+  const [ozet, gecmisVardiyalar, sifirlamaSaati] = await Promise.all([
     acikVardiya ? vardiyaOzetiHesapla(acikVardiya.id) : null,
     prisma.vardiya.findMany({
       // Vardiya ortak kasa olduğu için geçmiş vardiyaları herkes görür.
@@ -27,7 +28,11 @@ export default async function VardiyaSayfasi() {
       orderBy: { baslangic: "desc" },
       take: 10,
     }),
+    sifirlamaSaatiniAl(),
   ]);
+
+  const sonrakiSifirlama = sonrakiVardiyaSifirlamasi(sifirlamaSaati);
+  const sifirlamaSaatiMetni = `${String(sifirlamaSaati).padStart(2, "0")}:00`;
 
   return (
     <div className="space-y-4">
@@ -56,6 +61,13 @@ export default async function VardiyaSayfasi() {
                 gerek yok.
               </p>
             )}
+
+            {/* Görevli, vardiyanın kendiliğinden kapanacağını önceden bilsin. */}
+            <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
+              Vardiya her gün {sifirlamaSaatiMetni}&apos;de otomatik sıfırlanır. Sonraki
+              sıfırlama: {formatlaTarihSaat(sonrakiSifirlama)} ({sureMetni(new Date(), sonrakiSifirlama)}{" "}
+              sonra) — kasa devreder, para kasada kalır.
+            </p>
 
             <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-neutral-200 pt-3">
               <Kutu etiket="Açılış kasası" deger={formatlaPara(ozet.acilisKasa)} />
@@ -124,6 +136,13 @@ export default async function VardiyaSayfasi() {
                           ? ` → ${vardiya.kapatan.adSoyad}`
                           : ""}{" "}
                         · {sureMetni(vardiya.baslangic, vardiya.bitis!)}
+                        {/* Otomatik kapanışta kasa sayılmaz; fark hesabı olmadığı
+                            için bu vardiyalar elle kapatılanlarla karıştırılmamalı. */}
+                        {vardiya.otomatikKapanis && (
+                          <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-bold text-neutral-700">
+                            OTOMATİK · kasa sayılmadı
+                          </span>
+                        )}
                       </div>
                     </div>
 

@@ -115,6 +115,7 @@ export function AyarlarFormu({
     telefon: string | null;
     toplamKapasite: number;
     fisAltNotu: string | null;
+    vardiyaSifirlamaSaati: number;
   };
 }) {
   const router = useRouter();
@@ -153,6 +154,15 @@ export function AyarlarFormu({
           gerekli
           hata={durum.alanHatalari?.toplamKapasite}
           ipucu="Doluluk göstergesi ve 'otopark dolu' uyarısı bunu kullanır."
+        />
+        <Alan
+          ad="vardiyaSifirlamaSaati"
+          etiket="Vardiya sıfırlama saati (0–23)"
+          varsayilan={mevcut.vardiyaSifirlamaSaati}
+          inputMode="numeric"
+          gerekli
+          hata={durum.alanHatalari?.vardiyaSifirlamaSaati}
+          ipucu="Her gün bu saatte açık vardiya kapanır, kasa devrederek yenisi açılır. 12 = öğlen, 0 = gece yarısı."
         />
         <Alan
           ad="fisAltNotu"
