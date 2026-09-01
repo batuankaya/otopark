@@ -15,11 +15,21 @@ import { prisma } from "./prisma";
  * bir vardiyada girip başka vardiyada çıkabilir, para ikinci kasaya girer.
  */
 export async function vardiyaOzetiHesapla(vardiyaId: string) {
-  const [tahsilatlar, girisSayisi, cikisSayisi, vardiya, giderGruplari] = await Promise.all([
+  const [
+    tahsilatlar,
+    girisSayisi,
+    cikisSayisi,
+    vardiya,
+    giderGruplari,
+    borclar,
+    ucretsizCikisSayisi,
+  ] = await Promise.all([
     prisma.parkKaydi.groupBy({
       by: ["odemeYontemi"],
       where: { cikisVardiyaId: vardiyaId, durum: "CIKTI" },
-      _sum: { tahsilEdilenUcret: true },
+      // Eski borç tahsilatı da bu vardiyanın kasasına girer: para fiilen
+      // burada alınmıştır, borcun doğduğu vardiya değil bu vardiya sayar.
+      _sum: { tahsilEdilenUcret: true, tahsilEdilenBorc: true },
       _count: { _all: true },
     }),
     prisma.parkKaydi.count({ where: { vardiyaId, durum: { not: "IPTAL" } } }),
@@ -30,10 +40,24 @@ export async function vardiyaOzetiHesapla(vardiyaId: string) {
       where: { vardiyaId },
       _sum: { tutar: true },
     }),
+    prisma.parkKaydi.aggregate({
+      where: { cikisVardiyaId: vardiyaId, durum: "CIKTI", borcTutari: { gt: 0 } },
+      _sum: { borcTutari: true },
+      _count: { _all: true },
+    }),
+    // Ücretsiz çıkış = para alınmayan çıkış. Borçlu çıkışta da ödeme yöntemi
+    // boştur ama o araç ücretsiz çıkmamıştır — ayrı sayılmalı.
+    prisma.parkKaydi.count({
+      where: { cikisVardiyaId: vardiyaId, durum: "CIKTI", odemeYontemi: null, borcTutari: 0 },
+    }),
   ]);
 
-  const topla = (yontem: "NAKIT" | "KART") =>
-    sayiyaCevir(tahsilatlar.find((t) => t.odemeYontemi === yontem)?._sum.tahsilEdilenUcret);
+  const topla = (yontem: "NAKIT" | "KART") => {
+    const grup = tahsilatlar.find((t) => t.odemeYontemi === yontem);
+    return (
+      sayiyaCevir(grup?._sum.tahsilEdilenUcret) + sayiyaCevir(grup?._sum.tahsilEdilenBorc)
+    );
+  };
 
   const toplamNakit = topla("NAKIT");
   const toplamKart = topla("KART");
@@ -63,7 +87,14 @@ export async function vardiyaOzetiHesapla(vardiyaId: string) {
     netKazanc: toplamNakit + toplamKart - nakitGider - kartGider,
     girisSayisi,
     cikisSayisi,
-    ucretsizCikisSayisi:
-      tahsilatlar.find((t) => t.odemeYontemi === null)?._count._all ?? 0,
+    ucretsizCikisSayisi,
+    /** Bu vardiyada ödemeden çıkan araçların bıraktığı toplam borç. */
+    olusanBorc: sayiyaCevir(borclar._sum.borcTutari),
+    borcluCikisSayisi: borclar._count._all,
+    /** Bu vardiyada kasaya giren eski borç tahsilatı. */
+    tahsilEdilenBorc: tahsilatlar.reduce(
+      (toplam, grup) => toplam + sayiyaCevir(grup._sum.tahsilEdilenBorc),
+      0,
+    ),
   };
 }

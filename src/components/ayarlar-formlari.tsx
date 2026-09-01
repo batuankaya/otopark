@@ -11,6 +11,9 @@ import {
   tarifeKaydet,
   type AyarDurumu,
 } from "@/actions/ayarlar";
+import type { AracSinifi } from "@prisma/client";
+
+import { ARAC_SINIFI_ETIKETLERI, ARAC_SINIFI_ORNEKLERI } from "@/lib/arac-sinifi";
 import { formatlaPara } from "@/lib/para";
 
 const ALAN =
@@ -182,9 +185,11 @@ export function AyarlarFormu({
 // ---------------------------------------------------------------------------
 
 export function TarifeFormu({
+  aracSinifi,
   mevcut,
   gecmis,
 }: {
+  aracSinifi: AracSinifi;
   mevcut: {
     ad: string;
     ilkUcretsizDakika: number;
@@ -210,19 +215,21 @@ export function TarifeFormu({
   }, [durum.basarili, router]);
 
   return (
-    <Bolum baslik="Tarife">
+    <Bolum baslik={`Tarife — ${ARAC_SINIFI_ETIKETLERI[aracSinifi]}`}>
       <p className="mb-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
-        Tarife düzenlenmez, <strong>yeni sürüm oluşturulur</strong>. Böylece geçmiş kayıtların
-        ücreti değişmez; her park kaydı kendi tarifesini hatırlar.
+        {ARAC_SINIFI_ORNEKLERI[aracSinifi]} için geçerlidir. Tarife düzenlenmez,{" "}
+        <strong>yeni sürüm oluşturulur</strong>. Böylece geçmiş kayıtların ücreti değişmez; her
+        park kaydı kendi tarifesini hatırlar.
       </p>
 
       <form action={islem} className="space-y-3">
         <Geribildirim durum={durum} />
+        <input type="hidden" name="aracSinifi" value={aracSinifi} />
 
         <Alan
           ad="ad"
           etiket="Tarife adı"
-          varsayilan={mevcut?.ad ?? "Standart Tarife"}
+          varsayilan={mevcut?.ad ?? `${ARAC_SINIFI_ETIKETLERI[aracSinifi]} Tarifesi`}
           gerekli
           hata={durum.alanHatalari?.ad}
         />
@@ -238,7 +245,7 @@ export function TarifeFormu({
         <Alan
           ad="ilkSaatUcreti"
           etiket="İlk saat ücreti (TL)"
-          varsayilan={mevcut?.ilkSaatUcreti ?? 100}
+          varsayilan={mevcut?.ilkSaatUcreti ?? (aracSinifi === "BUYUK" ? 150 : 100)}
           inputMode="decimal"
           gerekli
           hata={durum.alanHatalari?.ilkSaatUcreti}
@@ -247,7 +254,7 @@ export function TarifeFormu({
         <Alan
           ad="saatlikUcret"
           etiket="Sonraki her saat (TL)"
-          varsayilan={mevcut?.saatlikUcret ?? 50}
+          varsayilan={mevcut?.saatlikUcret ?? (aracSinifi === "BUYUK" ? 100 : 50)}
           inputMode="decimal"
           gerekli
           hata={durum.alanHatalari?.saatlikUcret}
@@ -268,7 +275,9 @@ export function TarifeFormu({
 
       {gecmis.length > 0 && (
         <div className="mt-4 border-t border-neutral-200 pt-3">
-          <h3 className="text-sm font-bold text-neutral-700">Tarife geçmişi</h3>
+          <h3 className="text-sm font-bold text-neutral-700">
+            {ARAC_SINIFI_ETIKETLERI[aracSinifi]} tarife geçmişi
+          </h3>
           <ul className="mt-2 space-y-1.5 text-sm">
             {gecmis.map((tarife) => (
               <li key={tarife.id} className="flex items-center justify-between gap-2">

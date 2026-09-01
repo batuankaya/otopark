@@ -6,13 +6,23 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { aracGirisiYap, type IslemDurumu } from "@/actions/park";
+import type { AracSinifi } from "@prisma/client";
 import { MarkaModelSecici } from "@/components/marka-model-secici";
 import { PlakaInput } from "@/components/plaka-input";
 import { SaatInput } from "@/components/saat-input";
 import { useTaslak } from "@/hooks/use-taslak";
+import { ARAC_SINIFI_ETIKETLERI, ARAC_SINIFI_ORNEKLERI } from "@/lib/arac-sinifi";
+import { formatlaPara } from "@/lib/para";
 import { cozPlaka, dogrulaPlaka, ULKELER } from "@/lib/plaka";
 import { formatlaTarihSaat, saatGirdisiDegeri, sureMetni } from "@/lib/tarih";
 
+
+/** Girişte seçilebilecek araç sınıfı ve o sınıfın yürürlükteki fiyatı. */
+export type SinifSecenegi = {
+  sinif: AracSinifi;
+  ilkSaatUcreti: number;
+  saatlikUcret: number;
+};
 
 type AracBilgisi = {
   bulundu: boolean;
@@ -23,6 +33,10 @@ type AracBilgisi = {
   yabanciPlaka?: boolean;
   ulkeKodu?: string | null;
   iceride?: { kayitId: string; girisZamani: string; parkAlaniAd: string | null } | null;
+  /** Önceki çıkışlarından kalan, ödenmemiş borç. */
+  borc?: { toplam: number; adet: number } | null;
+  /** Aracın en son hangi sınıftan kaydedildiği — seçim otomatik gelsin diye. */
+  aracSinifi?: AracSinifi | null;
 };
 
 const TASLAK_ANAHTARI = "otopark:arac-girisi-taslak";
@@ -40,7 +54,7 @@ function KaydetButonu({ devreDisi }: { devreDisi: boolean }) {
   );
 }
 
-export function AracGirisFormu() {
+export function AracGirisFormu({ sinifSecenekleri }: { sinifSecenekleri: SinifSecenegi[] }) {
   const router = useRouter();
   const [durum, islem] = useActionState<IslemDurumu, FormData>(aracGirisiYap, {});
   const [aracBilgisi, setAracBilgisi] = useState<AracBilgisi | null>(null);
@@ -59,6 +73,7 @@ export function AracGirisFormu() {
     marka: "",
     model: "",
     renk: "",
+    aracSinifi: "BINEK" as AracSinifi,
     girisSaati: "",
     notlar: "",
   });
@@ -103,6 +118,12 @@ export function AracGirisFormu() {
             ulkeKodu: taslak.ulkeKodu || veri.ulkeKodu || "",
             // Aracın kalıcı notu forma gelsin; görevlinin yazdığı ezilmesin.
             notlar: taslak.notlar || veri.notlar || "",
+            // Sınıf araçta hatırlanır: aynı pickup her gelişinde tekrar
+            // işaretlenmesin. Seçenek listesinde yoksa (tarifesi kaldırılmış)
+            // dokunulmaz.
+            ...(veri.aracSinifi && sinifSecenekleri.some((s) => s.sinif === veri.aracSinifi)
+              ? { aracSinifi: veri.aracSinifi }
+              : {}),
           });
         }
       } catch {
@@ -125,6 +146,13 @@ export function AracGirisFormu() {
 
   const icerideUyarisi = aracBilgisi?.iceride;
 
+  // Taslakta duran sınıfın tarifesi kaldırılmış olabilir; o durumda ilk
+  // seçeneğe düşülür ki forma her zaman geçerli bir sınıf gitsin.
+  const seciliSinif =
+    sinifSecenekleri.find((s) => s.sinif === taslak.aracSinifi)?.sinif ??
+    sinifSecenekleri[0]?.sinif ??
+    "BINEK";
+
   return (
     <form action={islem} className="space-y-4">
       {/* Sunucuya gidecek gizli alanlar (kontrollü input'ların değerleri) */}
@@ -135,6 +163,7 @@ export function AracGirisFormu() {
       <input type="hidden" name="marka" value={taslak.marka} />
       <input type="hidden" name="model" value={taslak.model} />
       <input type="hidden" name="renk" value={taslak.renk} />
+      <input type="hidden" name="aracSinifi" value={seciliSinif} />
       {/* Not katlanmış panelin içinde olduğu için buradan gönderilir:
           panel kapalıyken textarea render edilmiyor ve not kayboluyordu. */}
       <input type="hidden" name="notlar" value={taslak.notlar} />
@@ -180,6 +209,53 @@ export function AracGirisFormu() {
             : "Örnek: 34 A 1234 · 34 AB 123 · 34 ABC 123"
         }
       />
+      )}
+
+      {/* Araç sınıfı — ücreti doğrudan belirlediği için formun üstünde durur.
+          Tek sınıf tanımlıysa seçilecek bir şey yok, gösterilmez. */}
+      {sinifSecenekleri.length > 1 && (
+        <fieldset className="rounded-xl border-2 border-neutral-300 bg-white p-3">
+          <legend className="px-1 text-base font-bold text-neutral-900">Araç sınıfı</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {sinifSecenekleri.map((secenek) => {
+              const secili = secenek.sinif === seciliSinif;
+              return (
+                <button
+                  key={secenek.sinif}
+                  type="button"
+                  aria-pressed={secili}
+                  onClick={() => guncelle({ aracSinifi: secenek.sinif })}
+                  className={`flex min-h-20 flex-col items-start justify-center rounded-lg border-2 px-4 text-left ${
+                    secili
+                      ? "border-blue-700 bg-blue-50"
+                      : "border-neutral-300 bg-white hover:bg-neutral-50"
+                  }`}
+                >
+                  <span
+                    className={`text-lg font-bold ${secili ? "text-blue-900" : "text-neutral-900"}`}
+                  >
+                    {ARAC_SINIFI_ETIKETLERI[secenek.sinif]}
+                  </span>
+                  <span className="text-sm text-neutral-600">
+                    {ARAC_SINIFI_ORNEKLERI[secenek.sinif]}
+                  </span>
+                  <span
+                    className={`mt-0.5 text-sm font-semibold tabular-nums ${
+                      secili ? "text-blue-900" : "text-neutral-700"
+                    }`}
+                  >
+                    {formatlaPara(secenek.ilkSaatUcreti)} + {formatlaPara(secenek.saatlikUcret)}/sa
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {durum.alanHatalari?.aracSinifi && (
+            <p role="alert" className="mt-2 text-sm font-semibold text-red-700">
+              {durum.alanHatalari.aracSinifi}
+            </p>
+          )}
+        </fieldset>
       )}
 
       {/* Plakasız kayıt anahtarı — plaka okunamadığında araç yine kaydedilebilsin */}
@@ -267,6 +343,20 @@ export function AracGirisFormu() {
         <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
           <p className="text-sm font-bold text-amber-900">Bu araca ait not</p>
           <p className="mt-0.5 text-base text-amber-900">{aracBilgisi.notlar}</p>
+        </div>
+      )}
+
+      {/* Ödemeden çıkmış araç geri geldi — görevli girişte bilsin.
+          Giriş engellenmez: borç çıkışta tahsil edilir. */}
+      {aracBilgisi?.borc && !icerideUyarisi && (
+        <div role="alert" className="rounded-xl border-2 border-red-600 bg-red-50 p-4">
+          <p className="text-lg font-bold text-red-800">
+            Bu aracın {formatlaPara(aracBilgisi.borc.toplam)} borcu var
+          </p>
+          <p className="mt-1 text-base text-red-900">
+            Önceki {aracBilgisi.borc.adet === 1 ? "çıkışında" : `${aracBilgisi.borc.adet} çıkışında`}{" "}
+            ödeme alınmamış. Borç, çıkış ekranında park ücretiyle birlikte tahsil edilebilir.
+          </p>
         </div>
       )}
 

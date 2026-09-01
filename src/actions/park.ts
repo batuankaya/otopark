@@ -1,12 +1,14 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type AracSinifi } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
+import { acikBorclariAl, borcDagit, borcDagitiminiYazTx, borcToplami, kurusYuvarla } from "@/lib/borc";
 import { islemGunluguYaz, islemGunluguYazTx } from "@/lib/gunluk";
 import { aracEtiketi } from "@/lib/plaka";
 import { prisma } from "@/lib/prisma";
 import { sayiyaCevir } from "@/lib/para";
+import { ARAC_SINIFI_ETIKETLERI } from "@/lib/arac-sinifi";
 import {
   aktifTarifeyiAl,
   aracinAbonmaniniBul,
@@ -57,9 +59,11 @@ export async function aracGirisiYap(
   }
 
   const veri = ayrisma.data;
-  const tarife = await aktifTarifeyiAl();
+  const tarife = await aktifTarifeyiAl(veri.aracSinifi);
   if (!tarife) {
-    return { hata: "Tanımlı aktif tarife yok. Yönetici Ayarlar'dan tarife tanımlamalı." };
+    return {
+      hata: `${ARAC_SINIFI_ETIKETLERI[veri.aracSinifi]} sınıfı için tanımlı aktif tarife yok. Yönetici Ayarlar'dan tarife tanımlamalı.`,
+    };
   }
 
   // Kapasite kontrolü
@@ -116,11 +120,15 @@ export async function aracGirisiYap(
           // Not araçta da saklanır: "anahtar bizde", "hasarlı" gibi bilgiler
           // aracın bir sonraki gelişinde görevliye otomatik hatırlatılsın diye.
           notlar: veri.notlar,
+          aracSinifi: veri.aracSinifi,
         },
         update: {
           // Boş bırakılan alanlar mevcut bilgiyi silmesin.
           plakaGosterim: veri.plakaGosterim,
           yabanciPlaka: veri.yabanciPlaka,
+          // Sınıf her girişte tazelenir: araç sınıf değiştirmez ama görevli
+          // önceki kaydı yanlış işaretlemişse düzeltmesi burada kalıcı olur.
+          aracSinifi: veri.aracSinifi,
           ...(veri.ulkeKodu ? { ulkeKodu: veri.ulkeKodu } : {}),
           ...(veri.marka ? { marka: veri.marka } : {}),
           ...(veri.model ? { model: veri.model } : {}),
@@ -163,6 +171,7 @@ export async function aracGirisiYap(
           girisYapanId: izin.kullanici.id,
           tarifeId: tarife.id,
           tarifeTuru,
+          aracSinifi: veri.aracSinifi,
           durum: "ICERIDE",
           parkAlaniId: parkAlani?.id ?? null,
           parkAlaniAd: parkAlani?.ad ?? null,
@@ -181,6 +190,7 @@ export async function aracGirisiYap(
           marka: veri.marka ?? null,
           model: veri.model ?? null,
           tarifeTuru,
+          aracSinifi: veri.aracSinifi,
           ...(veri.girisZamani ? { geriyeDonukGiris: veri.girisZamani.toISOString() } : {}),
         },
         aciklama:
@@ -240,6 +250,7 @@ export type CikisOnizlemesi = {
     renk: string | null;
     notlar: string | null;
     tarifeTuru: string;
+    aracSinifi: AracSinifi;
   };
   ucret?: {
     tutar: number;
@@ -247,6 +258,11 @@ export type CikisOnizlemesi = {
     aciklama: string;
     uyari?: string;
     uygulananTarifeTuru: string;
+  };
+  /** Aracın önceki çıkışlarından kalan, henüz tahsil edilmemiş borç. */
+  eskiBorc?: {
+    toplam: number;
+    kayitlar: Array<{ id: string; fisNo: number; cikisZamani: string | null; kalan: number }>;
   };
 };
 
@@ -265,8 +281,10 @@ export async function cikisOnizle(parkKaydiId: string): Promise<CikisOnizlemesi>
   }
 
   const simdi = new Date();
-  const abonman =
-    kayit.abonmanId && kayit.aracId ? await gecerliAbonmaniBul(kayit.aracId, simdi) : null;
+  const [abonman, acikBorclar] = await Promise.all([
+    kayit.abonmanId && kayit.aracId ? gecerliAbonmaniBul(kayit.aracId, simdi) : null,
+    kayit.aracId ? acikBorclariAl(kayit.aracId) : [],
+  ]);
 
   const sonuc = hesaplaUcret({
     girisZamani: kayit.girisZamani,
@@ -292,6 +310,7 @@ export async function cikisOnizle(parkKaydiId: string): Promise<CikisOnizlemesi>
       renk: kayit.renk ?? kayit.arac?.renk ?? null,
       notlar: kayit.notlar ?? kayit.arac?.notlar ?? null,
       tarifeTuru: kayit.tarifeTuru,
+      aracSinifi: kayit.aracSinifi,
     },
     ucret: {
       tutar: sonuc.ucret,
@@ -299,6 +318,15 @@ export async function cikisOnizle(parkKaydiId: string): Promise<CikisOnizlemesi>
       aciklama: "",
       uyari: sonuc.uyari,
       uygulananTarifeTuru: sonuc.uygulananTarifeTuru,
+    },
+    eskiBorc: {
+      toplam: borcToplami(acikBorclar),
+      kayitlar: acikBorclar.map((borc) => ({
+        id: borc.id,
+        fisNo: borc.fisNo,
+        cikisZamani: borc.cikisZamani?.toISOString() ?? null,
+        kalan: borc.kalan,
+      })),
     },
   };
 }
@@ -347,7 +375,7 @@ export async function aracCikisiYap(
   });
 
   // Görevli ücreti değiştirdiyse sebep zorunludur.
-  const elleGirilenTutar = veri.tahsilEdilenUcret;
+  const elleGirilenTutar = veri.duzeltilmisUcret;
   const ucretDegisti =
     elleGirilenTutar !== undefined && Math.abs(elleGirilenTutar - sonuc.ucret) > 0.009;
 
@@ -359,7 +387,35 @@ export async function aracCikisiYap(
     };
   }
 
-  const tahsilEdilen = ucretDegisti ? elleGirilenTutar! : sonuc.ucret;
+  /** İskonto sonrası ödenmesi gereken tutar. */
+  const tahakkuk = ucretDegisti ? elleGirilenTutar! : sonuc.ucret;
+
+  // Müşteri tahakkukun tamamını ödemediyse fark borç olarak kalır.
+  const tahsilEdilen = veri.alinanTutar !== undefined ? veri.alinanTutar : tahakkuk;
+  if (tahsilEdilen - tahakkuk > 0.009) {
+    return {
+      alanHatalari: {
+        alinanTutar: "Alınan tutar, ödenecek tutardan fazla olamaz.",
+      },
+    };
+  }
+  const borcTutari = kurusYuvarla(Math.max(0, tahakkuk - tahsilEdilen));
+
+  // Aracın önceki çıkışlarından kalan borç bu işlemde de tahsil edilebilir.
+  const acikBorclar = kayit.aracId ? await acikBorclariAl(kayit.aracId) : [];
+  const acikBorcToplami = borcToplami(acikBorclar);
+  const borcTahsilati = kurusYuvarla(veri.borcTahsilati ?? 0);
+  if (borcTahsilati - acikBorcToplami > 0.009) {
+    return {
+      alanHatalari: {
+        borcTahsilati: `Aracın açık borcu ${acikBorcToplami} TL. Daha fazlası tahsil edilemez.`,
+      },
+    };
+  }
+  const borcDagitimi = borcDagit(acikBorclar, borcTahsilati);
+
+  // Kasaya giren para: bu çıkışın ücreti + kapatılan eski borç.
+  const kasayaGiren = kurusYuvarla(tahsilEdilen + borcTahsilati);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -373,8 +429,13 @@ export async function aracCikisiYap(
           cikisVardiyaId: izin.vardiyaId,
           hesaplananUcret: new Prisma.Decimal(sonuc.ucret),
           tahsilEdilenUcret: new Prisma.Decimal(tahsilEdilen),
-          // 0 TL'de ödeme yöntemi anlamsız
-          odemeYontemi: tahsilEdilen > 0 ? veri.odemeYontemi : null,
+          // 0 TL'de ödeme yöntemi anlamsız. Ücret hiç alınmayıp yalnızca
+          // eski borç tahsil edildiyse yöntem yine kaydedilir: para kasaya
+          // o yöntemle girmiştir.
+          odemeYontemi: kasayaGiren > 0 ? veri.odemeYontemi : null,
+          borcTutari: new Prisma.Decimal(borcTutari),
+          borcKalan: new Prisma.Decimal(borcTutari),
+          tahsilEdilenBorc: new Prisma.Decimal(borcTahsilati),
           tarifeTuru: sonuc.uygulananTarifeTuru,
           ucretDuzeltmeSebebi: ucretDegisti ? veri.ucretDuzeltmeSebebi : null,
           ...(veri.notlar ? { notlar: veri.notlar } : {}),
@@ -385,6 +446,8 @@ export async function aracCikisiYap(
         throw new Error("CAKISMA");
       }
 
+      await borcDagitiminiYazTx(tx, borcDagitimi);
+
       await islemGunluguYazTx(tx, {
         kullaniciId: izin.kullanici.id,
         islemTipi: "CIKIS",
@@ -393,10 +456,31 @@ export async function aracCikisiYap(
           plaka: kayit.plaka,
           hesaplananUcret: sonuc.ucret,
           tahsilEdilenUcret: tahsilEdilen,
-          odemeYontemi: tahsilEdilen > 0 ? veri.odemeYontemi : null,
+          borcTutari,
+          tahsilEdilenBorc: borcTahsilati,
+          odemeYontemi: kasayaGiren > 0 ? veri.odemeYontemi : null,
         },
-        aciklama: `${aracEtiketi(kayit)} çıkışı — ${tahsilEdilen} TL`,
+        aciklama:
+          `${aracEtiketi(kayit)} çıkışı — ${tahsilEdilen} TL` +
+          (borcTutari > 0 ? ` (${borcTutari} TL BORÇ kaldı)` : ""),
       });
+
+      // Eski borç tahsilatı ayrı bir denetim kaydı: para bu vardiyanın
+      // kasasına girer ama bu kaydın kendi ücreti değildir.
+      if (borcTahsilati > 0) {
+        await islemGunluguYazTx(tx, {
+          kullaniciId: izin.kullanici.id,
+          islemTipi: "BORC_TAHSILATI",
+          ilgiliKayitId: kayit.id,
+          eskiDeger: { acikBorcToplami },
+          yeniDeger: {
+            tahsilEdilenBorc: borcTahsilati,
+            kapatilanKayitlar: borcDagitimi.map((pay) => ({ id: pay.id, dusulen: pay.dusulen })),
+            odemeYontemi: veri.odemeYontemi,
+          },
+          aciklama: `${aracEtiketi(kayit)} eski borcundan ${borcTahsilati} TL tahsil edildi`,
+        });
+      }
 
       // Ücret düzeltmesi ayrı bir denetim kaydı olarak da tutulur.
       if (ucretDegisti) {
@@ -413,6 +497,9 @@ export async function aracCikisiYap(
   } catch (hata) {
     if (hata instanceof Error && hata.message === "CAKISMA") {
       return { hata: "Bu araç az önce başka bir görevli tarafından çıkarıldı." };
+    }
+    if (hata instanceof Error && hata.message === "BORC_DEGISTI") {
+      return { hata: "Aracın borcu az önce değişti. Ekranı yenileyip tekrar deneyin." };
     }
     console.error("Araç çıkışı başarısız:", hata);
     return { hata: "Çıkış tamamlanamadı. Lütfen tekrar deneyin." };
@@ -457,6 +544,9 @@ export async function kaydiIptalEt(
         iptalSebebi,
         iptalEdenId: kullanici.id,
         iptalZamani: new Date(),
+        // İptal edilen kaydın alacağı da düşer; aksi hâlde açık borç
+        // listesinde artık var olmayan bir kayıt görünürdü.
+        borcKalan: 0,
       },
     });
 
@@ -467,6 +557,7 @@ export async function kaydiIptalEt(
       eskiDeger: {
         durum: kayit.durum,
         tahsilEdilenUcret: sayiyaCevir(kayit.tahsilEdilenUcret),
+        borcKalan: sayiyaCevir(kayit.borcKalan),
       },
       yeniDeger: { durum: "IPTAL" },
       aciklama: iptalSebebi,
@@ -525,6 +616,17 @@ export async function kaydiDuzenle(
     }
   }
 
+  // Sınıf değiştiyse ücret de değişmeli: kayıt yeni sınıfın yürürlükteki
+  // tarifesine bağlanır. Aksi hâlde "büyük araç" işaretlenir ama binek
+  // tarifesinden ücretlendirilirdi.
+  const sinifDegisti = veri.aracSinifi !== kayit.aracSinifi;
+  const yeniTarife = sinifDegisti ? await aktifTarifeyiAl(veri.aracSinifi) : null;
+  if (sinifDegisti && !yeniTarife) {
+    return {
+      hata: `${ARAC_SINIFI_ETIKETLERI[veri.aracSinifi]} sınıfı için tanımlı aktif tarife yok.`,
+    };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       // Plaka verildiyse araç kaydını oluştur/tazele ve kayda bağla.
@@ -541,6 +643,7 @@ export async function kaydiDuzenle(
             model: veri.model,
             renk: veri.renk,
             notlar: veri.notlar,
+            aracSinifi: veri.aracSinifi,
           },
           update: {
             plakaGosterim: veri.plakaGosterim,
@@ -551,6 +654,7 @@ export async function kaydiDuzenle(
             ...(veri.renk ? { renk: veri.renk } : {}),
             // Not araçta kalıcıdır — aracın bir sonraki gelişinde hatırlatılır.
             notlar: veri.notlar ?? null,
+            aracSinifi: veri.aracSinifi,
           },
         });
         aracId = arac.id;
@@ -568,6 +672,8 @@ export async function kaydiDuzenle(
           model: veri.model ?? null,
           renk: veri.renk ?? null,
           notlar: veri.notlar ?? null,
+          aracSinifi: veri.aracSinifi,
+          ...(yeniTarife ? { tarifeId: yeniTarife.id } : {}),
           ...(veri.girisZamani ? { girisZamani: veri.girisZamani } : {}),
         },
       });
@@ -582,6 +688,7 @@ export async function kaydiDuzenle(
           marka: kayit.marka ?? kayit.arac?.marka ?? null,
           model: kayit.model ?? kayit.arac?.model ?? null,
           renk: kayit.renk ?? kayit.arac?.renk ?? null,
+          aracSinifi: kayit.aracSinifi,
           girisZamani: kayit.girisZamani.toISOString(),
           notlar: kayit.notlar,
         },
@@ -590,6 +697,7 @@ export async function kaydiDuzenle(
           marka: veri.marka ?? null,
           model: veri.model ?? null,
           renk: veri.renk ?? null,
+          aracSinifi: veri.aracSinifi,
           girisZamani: (veri.girisZamani ?? kayit.girisZamani).toISOString(),
           notlar: veri.notlar ?? null,
         },
@@ -597,6 +705,9 @@ export async function kaydiDuzenle(
           `${aracEtiketi({ ...kayit })} kaydı düzenlendi` +
           (veri.girisZamani && veri.girisZamani.getTime() !== kayit.girisZamani.getTime()
             ? " (giriş saati değişti — ücreti etkiler)"
+            : "") +
+          (sinifDegisti
+            ? ` (araç sınıfı ${ARAC_SINIFI_ETIKETLERI[veri.aracSinifi]} olarak değişti — ücreti etkiler)`
             : "") +
           (!kayit.plaka && veri.plaka ? " (plaka eklendi)" : ""),
       });

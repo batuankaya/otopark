@@ -6,8 +6,9 @@ import { formatlaPara } from "@/lib/para";
 import { PersonelMesai } from "@/components/personel-mesai";
 import { GIDER_ETIKETLERI } from "@/lib/gider";
 import { gununGelisleri } from "@/lib/personel";
-import { formatlaSaat } from "@/lib/tarih";
+import { formatlaSaat, formatlaTarihSaat } from "@/lib/tarih";
 import {
+  acikBorclar,
   ciroOzeti,
   giderOzeti,
   gorevliPerformansi,
@@ -32,13 +33,14 @@ export default async function RaporlarSayfasi({
 
   const aralik = tarihAraligiOlustur(donem);
 
-  const [ozet, seri, saatler, gorevliler, giderler, mesai] = await Promise.all([
+  const [ozet, seri, saatler, gorevliler, giderler, mesai, borclar] = await Promise.all([
     ciroOzeti(aralik),
     gunlukSeri(aralik),
     saatlikDoluluk(aralik),
     gorevliPerformansi(aralik),
     giderOzeti(aralik),
     gununGelisleri(),
+    acikBorclar(),
   ]);
 
   const donemSinifi = (aktif: boolean) =>
@@ -111,7 +113,11 @@ export default async function RaporlarSayfasi({
         </section>
       )}
 
-      {(ozet.iskontoToplami !== 0 || ozet.iptalSayisi > 0 || ozet.ucretsizCikisSayisi > 0) && (
+      {(ozet.iskontoToplami !== 0 ||
+        ozet.iptalSayisi > 0 ||
+        ozet.ucretsizCikisSayisi > 0 ||
+        ozet.olusanBorc > 0 ||
+        ozet.tahsilEdilenBorc > 0) && (
         <section className="rounded-xl border border-neutral-300 bg-white p-4 text-sm">
           <h2 className="font-bold text-neutral-900">Dikkat edilecekler</h2>
           <ul className="mt-2 space-y-1 text-neutral-700">
@@ -125,7 +131,75 @@ export default async function RaporlarSayfasi({
             {ozet.ucretsizCikisSayisi > 0 && (
               <li>{ozet.ucretsizCikisSayisi} araç ücretsiz çıktı (abonman veya ücretsiz süre)</li>
             )}
+            {ozet.olusanBorc > 0 && (
+              <li>
+                {ozet.borcluCikisSayisi} araç ödemeden çıktı — toplam{" "}
+                <span className="font-bold tabular-nums text-red-700">
+                  {formatlaPara(ozet.olusanBorc)}
+                </span>{" "}
+                borç kaydedildi
+              </li>
+            )}
+            {ozet.tahsilEdilenBorc > 0 && (
+              <li>
+                Eski borçlardan tahsil edilen:{" "}
+                <span className="font-bold tabular-nums text-green-700">
+                  {formatlaPara(ozet.tahsilEdilenBorc)}
+                </span>{" "}
+                (ciroya dâhil)
+              </li>
+            )}
           </ul>
+        </section>
+      )}
+
+      {/* Açık borçlar — dönemden bağımsız anlık bakiye */}
+      {borclar.adet > 0 && (
+        <section className="rounded-xl border-2 border-red-600 bg-white">
+          <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-3">
+            <h2 className="text-base font-bold text-neutral-900">
+              Açık borçlar <span className="text-neutral-500">({borclar.adet})</span>
+            </h2>
+            <span className="text-lg font-bold tabular-nums text-red-700">
+              {formatlaPara(borclar.toplam)}
+            </span>
+          </div>
+          <p className="px-4 pt-2 text-sm text-neutral-600">
+            Ödemeden çıkan araçlar. Araç tekrar geldiğinde çıkış ekranında hatırlatılır ve
+            borç oradan tahsil edilir.
+          </p>
+          <ul className="divide-y divide-neutral-200">
+            {borclar.kayitlar.map((borc) => (
+              <li key={borc.id} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-neutral-900">
+                    {borc.plaka ?? `Fiş ${String(borc.fisNo).padStart(6, "0")}`}
+                  </div>
+                  <div className="truncate text-sm text-neutral-600">
+                    {[borc.arac, borc.cikisZamani ? formatlaTarihSaat(borc.cikisZamani) : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-bold tabular-nums text-red-700">
+                    {formatlaPara(borc.kalan)}
+                  </div>
+                  {/* Kısmen ödenmiş borçta ilk tutar da görünsün. */}
+                  {borc.kalan < borc.tutar && (
+                    <div className="text-xs text-neutral-500">
+                      {formatlaPara(borc.tutar)} idi
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {borclar.adet > borclar.kayitlar.length && (
+            <p className="px-4 py-2 text-center text-sm text-neutral-600">
+              {borclar.adet} borcun en eski {borclar.kayitlar.length} tanesi gösteriliyor.
+            </p>
+          )}
         </section>
       )}
 

@@ -34,6 +34,28 @@ export default async function VardiyaSayfasi() {
   const sonrakiSifirlama = sonrakiVardiyaSifirlamasi(sifirlamaSaati);
   const sifirlamaSaatiMetni = `${String(sifirlamaSaati).padStart(2, "0")}:00`;
 
+  /**
+   * Yeni vardiya açarken önerilecek başlangıç nakiti.
+   *
+   * Sıfırlama saatinde vardiya kapanır ama yenisi AÇILMAZ — onu sabah gelen
+   * görevli açar (bkz. lib/vardiya-sifirlama.ts). Dolayısıyla kasa devri
+   * artık otomatik değil: görevli kasayı sayıp tutarı kendisi giriyor.
+   *
+   * Önceki vardiyada kasada kalması gereken tutar öneri olarak gösterilir.
+   * Elle kapatılmış vardiyada sayılan tutar (kapanisKasa), otomatik
+   * kapanmışta hesaplanan beklenen tutar esas alınır. Öneri sadece
+   * kolaylıktır — görevli saydığı rakamı yazar, fark oradan doğar.
+   */
+  const sonKapanan = acikVardiya
+    ? null
+    : ((gecmisVardiyalar[0] ?? null) as (typeof gecmisVardiyalar)[number] | null);
+
+  const onerilenKasa = sonKapanan
+    ? sonKapanan.kapanisKasa !== null
+      ? sayiyaCevir(sonKapanan.kapanisKasa)
+      : (await vardiyaOzetiHesapla(sonKapanan.id)).beklenenKasa
+    : null;
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-neutral-900">Vardiya</h1>
@@ -82,7 +104,30 @@ export default async function VardiyaSayfasi() {
               <Kutu etiket="Kart gider" deger={`−${formatlaPara(ozet.kartGider)}`} />
               <Kutu etiket="Giriş yapılan" deger={`${ozet.girisSayisi} araç`} />
               <Kutu etiket="Çıkış yapılan" deger={`${ozet.cikisSayisi} araç`} />
+              {/* Borç kalemleri yalnızca varsa gösterilir: her vardiyada
+                  olmayan bir durum için kasa özetini şişirmeye gerek yok. */}
+              {ozet.tahsilEdilenBorc > 0 && (
+                <Kutu
+                  etiket="Eski borç tahsilatı"
+                  deger={formatlaPara(ozet.tahsilEdilenBorc)}
+                  vurgu="yesil"
+                />
+              )}
+              {ozet.olusanBorc > 0 && (
+                <Kutu
+                  etiket={`Ödemeden çıkan (${ozet.borcluCikisSayisi} araç)`}
+                  deger={formatlaPara(ozet.olusanBorc)}
+                  vurgu="kirmizi"
+                />
+              )}
             </dl>
+
+            {ozet.tahsilEdilenBorc > 0 && (
+              <p className="mt-2 text-sm text-neutral-600">
+                Eski borç tahsilatı nakit/kart toplamlarının içindedir — para bu vardiyada
+                kasaya girmiştir.
+              </p>
+            )}
           </section>
 
           <VardiyaKapatFormu
@@ -104,7 +149,7 @@ export default async function VardiyaSayfasi() {
               siz açtığınızda diğer görevliler de aynı kasaya işlem yapar.
             </p>
           </div>
-          <VardiyaAcFormu />
+          <VardiyaAcFormu onerilenKasa={onerilenKasa} />
         </>
       )}
 

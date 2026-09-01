@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { FisYazdirButonlari } from "@/components/fis-yazdir-butonlari";
+import { ARAC_SINIFI_ETIKETLERI } from "@/lib/arac-sinifi";
 import { aracEtiketi } from "@/lib/plaka";
 import { formatlaPara, sayiyaCevir } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
@@ -44,9 +45,15 @@ export default async function FisSayfasi({
 
   const cikisYapildi = kayit.durum === "CIKTI" && !!kayit.cikisZamani;
   const dakika = cikisYapildi ? hesaplaDakika(kayit.girisZamani, kayit.cikisZamani!) : 0;
-  const tutar = sayiyaCevir(kayit.tahsilEdilenUcret);
+  const alinan = sayiyaCevir(kayit.tahsilEdilenUcret);
   const hesaplanan = sayiyaCevir(kayit.hesaplananUcret);
-  const iskontoVar = cikisYapildi && Math.abs(hesaplanan - tutar) > 0.009;
+  const borc = sayiyaCevir(kayit.borcTutari);
+  const borcTahsilati = sayiyaCevir(kayit.tahsilEdilenBorc);
+  /** İskonto sonrası ödenmesi gereken park ücreti (alınan + borç). */
+  const tahakkuk = alinan + borc;
+  /** Müşterinin bu işlemde ödediği toplam para. */
+  const odenen = alinan + borcTahsilati;
+  const iskontoVar = cikisYapildi && Math.abs(hesaplanan - tahakkuk) > 0.009;
 
   const cizgi = "--------------------------------";
 
@@ -121,6 +128,9 @@ export default async function FisSayfasi({
                   : "Saatlik"
             }
           />
+          {/* Ücret sınıfa göre değiştiği için fişte görünür — müşteri neden
+              o tutarı ödediğini görebilsin. */}
+          <Satir etiket="Araç sınıfı" deger={ARAC_SINIFI_ETIKETLERI[kayit.aracSinifi]} />
 
           {!cikisYapildi && (
             <>
@@ -137,13 +147,25 @@ export default async function FisSayfasi({
               {iskontoVar && (
                 <>
                   <Satir etiket="Hesaplanan" deger={formatlaPara(hesaplanan)} />
-                  <Satir etiket="Düzeltme" deger={formatlaPara(tutar - hesaplanan)} />
+                  <Satir etiket="Düzeltme" deger={formatlaPara(tahakkuk - hesaplanan)} />
                 </>
               )}
+              <Satir etiket="Park ücreti" deger={formatlaPara(tahakkuk)} />
+              {/* Önceki gelişinden kalan borç bu çıkışta tahsil edildiyse
+                  müşteri neyi ödediğini fişte görsün. */}
+              {borcTahsilati > 0 && (
+                <Satir etiket="Eski borç" deger={formatlaPara(borcTahsilati)} />
+              )}
               <div className="flex justify-between text-[15px] font-bold">
-                <span>TOPLAM</span>
-                <span>{formatlaPara(tutar)}</span>
+                <span>ÖDENEN</span>
+                <span>{formatlaPara(odenen)}</span>
               </div>
+              {borc > 0 && (
+                <div className="flex justify-between text-[15px] font-bold">
+                  <span>BORÇ</span>
+                  <span>{formatlaPara(borc)}</span>
+                </div>
+              )}
               <Satir
                 etiket="Ödeme"
                 deger={
@@ -154,6 +176,11 @@ export default async function FisSayfasi({
                       : "Ücretsiz"
                 }
               />
+              {borc > 0 && (
+                <div className="mt-1 text-center font-bold">
+                  *** {formatlaPara(borc)} BORÇ KALDI ***
+                </div>
+              )}
             </>
           )}
 

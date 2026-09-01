@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BuyukButon } from "@/components/buyuk-buton";
 import { DolulukGostergesi } from "@/components/doluluk-gostergesi";
 import { PlakaGoster } from "@/components/plaka-goster";
-import { formatlaPara } from "@/lib/para";
+import { formatlaPara, sayiyaCevir } from "@/lib/para";
 import { dolulukAl, sonIslemleriAl } from "@/lib/sorgular";
 import { formatlaSaat, sureMetni } from "@/lib/tarih";
 import { acikVardiyayiBul, oturumZorunlu } from "@/lib/yetki";
@@ -144,8 +144,15 @@ export default async function AnaPano({
                               ? "Nakit"
                               : kayit.odemeYontemi === "KART"
                                 ? "Kart"
-                                : "Ücretsiz"}
+                                : sayiyaCevir(kayit.borcKalan) > 0
+                                  ? "Ödenmedi"
+                                  : "Ücretsiz"}
                           </div>
+                          {sayiyaCevir(kayit.borcKalan) > 0 && (
+                            <div className="mt-0.5 text-xs font-bold text-red-700">
+                              BORÇ {formatlaPara(kayit.borcKalan)}
+                            </div>
+                          )}
                         </>
                       ) : (
                         <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-800">

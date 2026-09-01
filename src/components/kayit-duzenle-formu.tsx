@@ -4,10 +4,15 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 
+import type { AracSinifi } from "@prisma/client";
+
 import { kaydiDuzenle, type IslemDurumu } from "@/actions/park";
+import type { SinifSecenegi } from "@/components/arac-giris-formu";
 import { MarkaModelSecici } from "@/components/marka-model-secici";
 import { PlakaInput } from "@/components/plaka-input";
 import { SaatInput } from "@/components/saat-input";
+import { ARAC_SINIFI_ETIKETLERI } from "@/lib/arac-sinifi";
+import { formatlaPara } from "@/lib/para";
 import { cozPlaka, ULKELER } from "@/lib/plaka";
 import { saatGirdisiDegeri } from "@/lib/tarih";
 
@@ -21,6 +26,7 @@ export type DuzenlenecekKayit = {
   model: string | null;
   renk: string | null;
   notlar: string | null;
+  aracSinifi: AracSinifi;
   /** "HH:MM" — İstanbul saatiyle. */
   girisSaati: string;
 };
@@ -45,7 +51,13 @@ function KaydetButonu() {
  * araç bilgisi/not güncellemek için kullanılır. Giriş saati ücreti doğrudan
  * etkilediği için değişiklik işlem günlüğüne yazılır.
  */
-export function KayitDuzenleFormu({ kayit }: { kayit: DuzenlenecekKayit }) {
+export function KayitDuzenleFormu({
+  kayit,
+  sinifSecenekleri,
+}: {
+  kayit: DuzenlenecekKayit;
+  sinifSecenekleri: SinifSecenegi[];
+}) {
   const router = useRouter();
   const [durum, islem] = useActionState<IslemDurumu, FormData>(kaydiDuzenle, {});
 
@@ -55,6 +67,7 @@ export function KayitDuzenleFormu({ kayit }: { kayit: DuzenlenecekKayit }) {
   const [marka, setMarka] = useState(kayit.marka ?? "");
   const [model, setModel] = useState(kayit.model ?? "");
   const [renk, setRenk] = useState(kayit.renk ?? "");
+  const [aracSinifi, setAracSinifi] = useState<AracSinifi>(kayit.aracSinifi);
   const [girisSaati, setGirisSaati] = useState(kayit.girisSaati);
   const [notlar, setNotlar] = useState(kayit.notlar ?? "");
 
@@ -64,6 +77,7 @@ export function KayitDuzenleFormu({ kayit }: { kayit: DuzenlenecekKayit }) {
 
   const plakaCozumu = plaka ? cozPlaka(plaka, yabanci) : null;
   const saatDegisti = girisSaati !== kayit.girisSaati;
+  const sinifDegisti = aracSinifi !== kayit.aracSinifi;
 
   return (
     <form action={islem} className="space-y-4">
@@ -74,6 +88,7 @@ export function KayitDuzenleFormu({ kayit }: { kayit: DuzenlenecekKayit }) {
       <input type="hidden" name="marka" value={marka} />
       <input type="hidden" name="model" value={model} />
       <input type="hidden" name="renk" value={renk} />
+      <input type="hidden" name="aracSinifi" value={aracSinifi} />
       <input type="hidden" name="girisSaati" value={girisSaati} />
       <input type="hidden" name="notlar" value={notlar} />
 
@@ -157,6 +172,47 @@ export function KayitDuzenleFormu({ kayit }: { kayit: DuzenlenecekKayit }) {
 
       <section className="space-y-3 rounded-xl border border-neutral-300 bg-white p-4">
         <h2 className="text-lg font-bold text-neutral-900">Araç bilgileri</h2>
+
+        {sinifSecenekleri.length > 1 && (
+          <fieldset>
+            <legend className="mb-1 text-sm font-semibold text-neutral-700">Araç sınıfı</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {sinifSecenekleri.map((secenek) => {
+                const secili = secenek.sinif === aracSinifi;
+                return (
+                  <button
+                    key={secenek.sinif}
+                    type="button"
+                    aria-pressed={secili}
+                    onClick={() => setAracSinifi(secenek.sinif)}
+                    className={`flex min-h-16 flex-col items-start justify-center rounded-lg border-2 px-3 text-left ${
+                      secili
+                        ? "border-blue-700 bg-blue-50"
+                        : "border-neutral-300 bg-white hover:bg-neutral-50"
+                    }`}
+                  >
+                    <span
+                      className={`font-bold ${secili ? "text-blue-900" : "text-neutral-900"}`}
+                    >
+                      {ARAC_SINIFI_ETIKETLERI[secenek.sinif]}
+                    </span>
+                    <span className="text-sm tabular-nums text-neutral-600">
+                      {formatlaPara(secenek.ilkSaatUcreti)} +{" "}
+                      {formatlaPara(secenek.saatlikUcret)}/sa
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {sinifDegisti && (
+              <p className="mt-2 rounded-lg border-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+                Araç sınıfı {ARAC_SINIFI_ETIKETLERI[kayit.aracSinifi]} →{" "}
+                {ARAC_SINIFI_ETIKETLERI[aracSinifi]} olarak değişecek. Ücret yeni sınıfın
+                tarifesinden hesaplanır.
+              </p>
+            )}
+          </fieldset>
+        )}
 
         <MarkaModelSecici
           marka={marka}

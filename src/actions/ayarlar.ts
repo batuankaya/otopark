@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
+import { ARAC_SINIFI_ETIKETLERI } from "@/lib/arac-sinifi";
 import { islemGunluguYazTx } from "@/lib/gunluk";
 import { sayiyaCevir } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
@@ -100,8 +101,10 @@ export async function tarifeKaydet(
   if (!ayrisma.success) return { alanHatalari: hatalariTopla(ayrisma.error) };
   const veri = ayrisma.data;
 
+  // Yalnızca AYNI SINIFIN tarifesi tazelenir: binek tarifesi güncellenirken
+  // büyük araç tarifesinin pasifleşmemesi gerekir.
   const mevcut = await prisma.tarife.findFirst({
-    where: { aktif: true },
+    where: { aracSinifi: veri.aracSinifi, aktif: true },
     orderBy: { gecerlilikBaslangic: "desc" },
   });
 
@@ -115,6 +118,7 @@ export async function tarifeKaydet(
     const yeni = await tx.tarife.create({
       data: {
         ad: veri.ad,
+        aracSinifi: veri.aracSinifi,
         ilkUcretsizDakika: veri.ilkUcretsizDakika,
         ilkSaatUcreti: new Prisma.Decimal(veri.ilkSaatUcreti),
         saatlikUcret: new Prisma.Decimal(veri.saatlikUcret),
@@ -132,6 +136,7 @@ export async function tarifeKaydet(
       eskiDeger: mevcut
         ? {
             ad: mevcut.ad,
+            aracSinifi: mevcut.aracSinifi,
             ilkUcretsizDakika: mevcut.ilkUcretsizDakika,
             ilkSaatUcreti: sayiyaCevir(mevcut.ilkSaatUcreti),
             saatlikUcret: sayiyaCevir(mevcut.saatlikUcret),
@@ -140,19 +145,20 @@ export async function tarifeKaydet(
         : undefined,
       yeniDeger: {
         ad: veri.ad,
+        aracSinifi: veri.aracSinifi,
         ilkUcretsizDakika: veri.ilkUcretsizDakika,
         ilkSaatUcreti: veri.ilkSaatUcreti,
         saatlikUcret: veri.saatlikUcret,
         gunlukTavanUcret: veri.gunlukTavanUcret,
       },
-      aciklama: `Yeni tarife yürürlüğe girdi: ${veri.ad}`,
+      aciklama: `Yeni tarife yürürlüğe girdi (${ARAC_SINIFI_ETIKETLERI[veri.aracSinifi]}): ${veri.ad}`,
     });
   });
 
   revalidatePath("/ayarlar");
   return {
     basarili: true,
-    bilgi: "Yeni tarife yürürlüğe girdi. Mevcut park kayıtları eski tarifeden ücretlendirilir.",
+    bilgi: `${ARAC_SINIFI_ETIKETLERI[veri.aracSinifi]} tarifesi yürürlüğe girdi. Mevcut park kayıtları eski tarifeden ücretlendirilir.`,
   };
 }
 

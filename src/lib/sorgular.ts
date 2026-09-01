@@ -7,7 +7,9 @@
  */
 
 import { unstable_noStore as onbellekleme } from "next/cache";
+import type { AracSinifi } from "@prisma/client";
 
+import { ARAC_SINIFLARI, VARSAYILAN_ARAC_SINIFI } from "./arac-sinifi";
 import { prisma } from "./prisma";
 import { sayiyaCevir } from "./para";
 import { kalanGun } from "./tarih";
@@ -23,14 +25,28 @@ export async function ayarlariAl() {
 }
 
 /**
- * Yürürlükteki tarife: geçerlilik başlangıcı geçmiş, aktif tarifelerin
- * en yenisi. Yoksa `null` döner ve arayüz kullanıcıyı Ayarlar'a yönlendirir.
+ * Bir araç sınıfının yürürlükteki tarifesi: geçerlilik başlangıcı geçmiş,
+ * aktif tarifelerin en yenisi. Yoksa `null` döner ve arayüz kullanıcıyı
+ * Ayarlar'a yönlendirir.
  */
-export async function aktifTarifeyiAl() {
+export async function aktifTarifeyiAl(aracSinifi: AracSinifi = VARSAYILAN_ARAC_SINIFI) {
   return prisma.tarife.findFirst({
+    where: { aracSinifi, aktif: true, gecerlilikBaslangic: { lte: new Date() } },
+    orderBy: { gecerlilikBaslangic: "desc" },
+  });
+}
+
+/** Her araç sınıfının yürürlükteki tarifesi — giriş ve ayarlar ekranı için. */
+export async function aktifTarifeleriAl() {
+  const tarifeler = await prisma.tarife.findMany({
     where: { aktif: true, gecerlilikBaslangic: { lte: new Date() } },
     orderBy: { gecerlilikBaslangic: "desc" },
   });
+
+  // Sınıf başına en yenisi: liste zaten tarihe göre sıralı, ilk eşleşen kazanır.
+  return Object.fromEntries(
+    ARAC_SINIFLARI.map((sinif) => [sinif, tarifeler.find((t) => t.aracSinifi === sinif) ?? null]),
+  ) as Record<AracSinifi, (typeof tarifeler)[number] | null>;
 }
 
 /** Ücret motorunun beklediği sade tarife nesnesi. */
@@ -115,6 +131,7 @@ export async function sonIslemleriAl(adet = 10) {
       durum: true,
       tahsilEdilenUcret: true,
       odemeYontemi: true,
+      borcKalan: true,
       girisYapan: { select: { adSoyad: true } },
       cikisYapan: { select: { adSoyad: true } },
       // Plakalı araçlarda marka/model/not araç kaydında durur.

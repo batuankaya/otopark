@@ -219,20 +219,38 @@ kalıbına uymadığı için ayrı bir yol izlenir:
 5. Ücret = ilkSaatÜcreti + (saat − 1) × saatlikÜcret
 ```
 
-Varsayılan tarife: **ilk saat 100 TL, sonraki her saat +50 TL**, ilk 15 dk ücretsiz.
-
-| Süre | Ücret |
-|---|---|
-| 15 dk | 0 TL (ücretsiz süre) |
-| 1 saat | 100 TL |
-| 2 saat | 150 TL |
-| 3 saat | 200 TL |
-| 5 saat | 300 TL |
-| 24 saat | 1.250 TL |
-
 - Başlayan her saat **tam saat** sayılır — 1 sa 1 dk kalan araç 2 saat öder
 - İlk saat tamamlanmasa bile tam alınır (ücretsiz süre aşıldıysa)
 - İskonto/ücret düzeltmesi **yalnızca sebep girilerek** yapılır ve işlem günlüğüne yazılır
+
+#### Araç sınıfı
+
+Ücret **araç sınıfına** göre değişir; her sınıfın kendi yürürlükteki tarifesi vardır.
+
+| Sınıf | Kapsam | İlk saat | Sonraki her saat |
+|---|---|---|---|
+| **Binek** | Otomobil, station, hatchback | 100 TL | +50 TL |
+| **Büyük araç** | Pickup, kamyonet, minibüs, panelvan | 150 TL | +100 TL |
+
+| Süre | Binek | Büyük araç |
+|---|---|---|
+| 15 dk | 0 TL (ücretsiz süre) | 0 TL |
+| 1 saat | 100 TL | 150 TL |
+| 2 saat | 150 TL | 250 TL |
+| 3 saat | 200 TL | 350 TL |
+| 5 saat | 300 TL | 550 TL |
+| 24 saat | 1.250 TL | 2.450 TL |
+
+- Sınıf **girişte** seçilir ve **araçta hatırlanır** — aynı pickup ikinci gelişinde
+  otomatik işaretli gelir
+- Yanlış seçilmişse **İçerideki Araçlar → Düzenle**'den değiştirilebilir; kayıt yeni
+  sınıfın tarifesine bağlanır ve değişiklik denetim izine yazılır
+- Çıkmış kayıtlar dokunulmaz: her park kaydı `tarifeId` ile kendi tarifesini hatırlar
+- Bir sınıfın aktif tarifesi yoksa o sınıftan giriş yapılamaz; diğer sınıf etkilenmez
+- Fişte ve çıkış ekranında sınıf görünür, CSV raporunda ayrı sütundur
+
+Tarifeler **Ayarlar → Tarife**'den sınıf başına ayrı ayrı yönetilir. Tarife düzenlenmez,
+yeni sürüm oluşturulur.
 
 **İsteğe bağlı günlük tavan.** Ayarlar'daki "Günlük tavan ücreti" **0** olduğu sürece
 üst sınır uygulanmaz. İleride bir gün için tavan koymak isterseniz oraya tutar yazmanız
@@ -257,6 +275,32 @@ olan üstte) — görevli hiç yazmadan aracı seçebilir.
 - Aynı plaka **aynı anda iki kez içeride olamaz** — deneme uyarı verir ve mevcut kaydı gösterir
 - Kayıtlar **silinmez**, iptal edilir (soft delete) ve **sebep zorunludur** (yalnızca ADMIN)
 - Otopark doluysa yeni giriş engellenir
+
+### Borç — ödemeden çıkan araçlar
+
+Ödemeyi yapmadan (ya da eksik yaparak) çıkan araç için **borç** kaydedilir. Borç,
+iskontodan farklıdır: iskontoda alacaktan vazgeçilir ve ciro o kadar düşer; borçta
+alacak durur, para kasaya sonra girer.
+
+- Çıkış ekranındaki **"Ödeyemedi / eksik tahsilat"** bölümünden müşteriden şimdi
+  alınan tutar girilir; kalanı borca yazılır. Hiç para alınmadıysa ödeme yöntemi
+  boş kalır — ama **ücretsiz çıkış sayılmaz**, raporlarda ayrı görünür
+- Borç araca (plakaya) bağlanır. **Plakasız** bir kayıtta borç sonradan araçla
+  eşleştirilemez; ekran görevliyi uyarır ve önce plaka eklemesini önerir
+- Borçlu araç tekrar geldiğinde: **girişte** plaka yazılırken uyarı çıkar,
+  **aramada** kırmızı borç rozeti görünür, **çıkışta** eski borç listelenir ve
+  güncel ücretle birlikte tahsil edilebilir
+- **Kısmi tahsilat** desteklenir; borçtan alınan tutar serbestçe girilir. Birden
+  fazla açık borç varsa **en eskisinden** başlanarak kapatılır
+- Tahsil edilen borç, parayı **alan vardiyanın** kasasına yazılır (borcun oluştuğu
+  vardiyaya değil) ve denetim izine ayrı bir `BORC_TAHSILATI` satırı düşer
+- Kayıt iptal edilirse kalan borç sıfırlanır; denetim için `borcTutari` yerinde kalır
+
+Raporlar sayfasındaki **Açık borçlar** bölümü, tarih aralığından bağımsız olarak
+o an açık olan tüm bakiyeleri listeler — borç canlı bir alacak, dönemsel bir toplam değil.
+
+**Kapsam dışı:** yalnızca borç ödemek için gelen (park etmeyen) müşteri için ayrı bir
+tahsilat ekranı yoktur; tahsilat normal çıkış akışından yapılır.
 
 ### Abonman
 
@@ -286,22 +330,26 @@ Vardiya kullanıcı başına değil, **otopark genelinde tektir**.
 
 #### Günlük otomatik sıfırlama
 
-Vardiya her gün **00:00'da** (Ayarlar → *Vardiya sıfırlama saati*, 0–23) kendiliğinden
-sıfırlanır:
+Açık vardiya her gün **00:00'da** (Ayarlar → *Vardiya sıfırlama saati*, 0–23)
+kendiliğinden **kapanır**. Yerine yenisi açılmaz — onu sabah işe gelen görevli açar.
 
-- Açık vardiya o saatte kapanır, yerine yenisi açılır — görevlinin bir şey yapması gerekmez
-- **Kasa devreder**: yeni vardiyanın açılış kasası, kapanan vardiyanın "kasada olması
-  gereken" tutarıdır. Para fiziksel olarak kasada kalır, yalnızca defter yeni sayfaya geçer
+- Kapanış, görevli akşam vardiyayı kapatmayı unutsa bile günün hesabının kapanmasını
+  garanti eder. Ertesi günün tahsilatı önceki günün kasasına karışmaz
+- **Yeni vardiyayı sistem açmaz.** Vardiya açmak kasayı sayıp tutarı onaylamak demektir;
+  sistem geceleyin kendi kendine açsaydı açılış kasası hiç kimsenin saymadığı bir tutar
+  olur, gün sonundaki fark da o sayılmamış tutara göre hesaplanırdı — mutabakat anlamını
+  yitirirdi
 - Otomatik kapanışta **kasa sayılmaz**: `kapanisKasa` ve `fark` boş kalır, uydurma bir kasa
   açığı raporlanmaz. Bu vardiyalar listede `OTOMATİK · kasa sayılmadı` rozetiyle görünür
-- Görevli isterse günün herhangi bir anında vardiyayı elle de kapatabilir; sıfırlama saati
-  yalnızca *unutulduğunda* devreye giren güvenlik ağıdır
+- Kapanan vardiyanın notuna **kasada olması gereken tutar** yazılır. Sabah vardiya açan
+  görevliye bu tutar öneri olarak gösterilir; parayı sayıp doğrular, farklıysa saydığını girer
+- Gece yarısından sabah vardiya açılana kadar sistemde açık vardiya bulunmaz; bu sürede
+  araç giriş/çıkışı yapılamaz. Otopark 08:00–20:30 çalıştığı için bu istenen davranıştır
 - Vardiya ekranında bir sonraki sıfırlamanın ne zaman olacağı yazar
 
 > **Sıfırlama saati çalışma saatlerinin DIŞINDA olmalı.** Otopark 08:00–20:30 açık;
-> saat örneğin 12:00 yapılırsa vardiya iş gününün ortasında kapanıp yeniden açılır ve
-> tek bir gün iki ayrı kasa defterine bölünür. Kasa devri yine doğru çalışır ama gün
-> sonu mutabakatı iki parçadan toplanmak zorunda kalır. Varsayılan bu yüzden 00:00.
+> saat örneğin 12:00 yapılırsa vardiya iş gününün ortasında kapanır ve o andan itibaren
+> görevli yeni vardiya açana kadar araç işlemi yapılamaz. Varsayılan bu yüzden 00:00.
 
 Sıfırlama **zamanlanmış görevle (cron) yapılmaz** — makine kapalıyken çalışmayan bir cron
 sıfırlamayı sessizce atlar. Bunun yerine açık vardiya her sorgulandığında sınırın geçip

@@ -20,6 +20,8 @@ const { sahte } = vi.hoisted(() => ({
     vardiya: null as Record<string, unknown> | null,
     girisSayisi: 0,
     cikisSayisi: 0,
+    ucretsizCikisSayisi: 0,
+    borclar: { _sum: { borcTutari: null as unknown }, _count: { _all: 0 } },
     sorgular: [] as Array<{ ad: string; where?: Record<string, unknown> }>,
   },
 }));
@@ -32,11 +34,26 @@ vi.mock("@/lib/prisma", () => ({
         return Promise.resolve(sahte.tahsilatlar);
       },
       count: (arg: { where: Record<string, unknown> }) => {
-        // İki farklı sayım aynı fonksiyondan geçiyor: girişler vardiyaId ile,
-        // çıkışlar cikisVardiyaId ile süzülür.
-        const cikis = "cikisVardiyaId" in arg.where;
-        sahte.sorgular.push({ ad: cikis ? "cikisSayisi" : "girisSayisi", where: arg.where });
-        return Promise.resolve(cikis ? sahte.cikisSayisi : sahte.girisSayisi);
+        // Üç farklı sayım aynı fonksiyondan geçiyor: girişler vardiyaId ile,
+        // çıkışlar cikisVardiyaId ile, ücretsiz çıkışlar ayrıca ödeme
+        // yöntemi ve borç süzgeciyle.
+        const ad = "odemeYontemi" in arg.where
+          ? "ucretsizCikisSayisi"
+          : "cikisVardiyaId" in arg.where
+            ? "cikisSayisi"
+            : "girisSayisi";
+        sahte.sorgular.push({ ad, where: arg.where });
+        return Promise.resolve(
+          ad === "ucretsizCikisSayisi"
+            ? sahte.ucretsizCikisSayisi
+            : ad === "cikisSayisi"
+              ? sahte.cikisSayisi
+              : sahte.girisSayisi,
+        );
+      },
+      aggregate: (arg: { where: Record<string, unknown> }) => {
+        sahte.sorgular.push({ ad: "borc", where: arg.where });
+        return Promise.resolve(sahte.borclar);
       },
     },
     vardiya: {
@@ -56,9 +73,17 @@ const { vardiyaOzetiHesapla } = await import("@/lib/vardiya-ozet");
 /** Prisma `Decimal` nesnesini taklit eder — gerçekte de `toNumber` gelir. */
 const desimal = (deger: number) => ({ toNumber: () => deger });
 
-const tahsilat = (yontem: "NAKIT" | "KART" | null, tutar: number, adet = 1) => ({
+const tahsilat = (
+  yontem: "NAKIT" | "KART" | null,
+  tutar: number,
+  adet = 1,
+  borcTahsilati = 0,
+) => ({
   odemeYontemi: yontem,
-  _sum: { tahsilEdilenUcret: tutar === 0 ? null : desimal(tutar) },
+  _sum: {
+    tahsilEdilenUcret: tutar === 0 ? null : desimal(tutar),
+    tahsilEdilenBorc: borcTahsilati === 0 ? null : desimal(borcTahsilati),
+  },
   _count: { _all: adet },
 });
 
@@ -73,6 +98,8 @@ beforeEach(() => {
   sahte.vardiya = { acilisKasa: desimal(0) };
   sahte.girisSayisi = 0;
   sahte.cikisSayisi = 0;
+  sahte.ucretsizCikisSayisi = 0;
+  sahte.borclar = { _sum: { borcTutari: null }, _count: { _all: 0 } };
   sahte.sorgular = [];
 });
 
@@ -96,14 +123,52 @@ describe("vardiyaOzetiHesapla — tahsilat toplamları", () => {
     expect(ozet.netKazanc).toBe(0);
   });
 
-  it("ödeme yöntemi boş olan grubu ücretsiz çıkış sayar", async () => {
+  it("ücretsiz çıkışları ayrı sorgudan alır", async () => {
     // İlk 15 dakikada çıkan araçlar: tahsilat yok, ödeme yöntemi de yok.
+    // Borçlu çıkışta da ödeme yöntemi boştur; bu yüzden sayı gruplamadan
+    // değil, borcu olmayan çıkışları süzen ayrı bir sorgudan gelir.
     sahte.tahsilatlar = [tahsilat("NAKIT", 300), tahsilat(null, 0, 4)];
+    sahte.ucretsizCikisSayisi = 4;
 
     const ozet = await vardiyaOzetiHesapla("v1");
 
     expect(ozet.ucretsizCikisSayisi).toBe(4);
     expect(ozet.toplamNakit).toBe(300);
+  });
+
+  it("ücretsiz çıkış sayımı borçlu çıkışları dışarıda bırakır", async () => {
+    // Borçlu çıkışta ödeme yöntemi boş kalır ama araç ücretsiz çıkmamıştır.
+    sahte.ucretsizCikisSayisi = 0;
+
+    await vardiyaOzetiHesapla("v1");
+
+    const sorgu = sahte.sorgular.find((s) => s.ad === "ucretsizCikisSayisi");
+    expect(sorgu?.where).toMatchObject({ odemeYontemi: null, borcTutari: 0 });
+  });
+
+  it("eski borç tahsilatı nakit/kart toplamlarına eklenir", async () => {
+    // Borcun kendisi başka bir vardiyada doğmuş olabilir; para BU vardiyada
+    // kasaya girdiği için burada sayılır.
+    sahte.tahsilatlar = [tahsilat("NAKIT", 100, 1, 50), tahsilat("KART", 200, 1, 25)];
+
+    const ozet = await vardiyaOzetiHesapla("v1");
+
+    expect(ozet.toplamNakit).toBe(150);
+    expect(ozet.toplamKart).toBe(225);
+    expect(ozet.toplamTahsilat).toBe(375);
+    expect(ozet.tahsilEdilenBorc).toBe(75);
+  });
+
+  it("borçlu çıkışlar kasaya değil borç toplamına yazılır", async () => {
+    sahte.tahsilatlar = [tahsilat("NAKIT", 100)];
+    sahte.borclar = { _sum: { borcTutari: desimal(240) }, _count: { _all: 3 } };
+
+    const ozet = await vardiyaOzetiHesapla("v1");
+
+    expect(ozet.olusanBorc).toBe(240);
+    expect(ozet.borcluCikisSayisi).toBe(3);
+    // Borç kasayı etkilemez: para henüz alınmamıştır.
+    expect(ozet.beklenenKasa).toBe(100);
   });
 
   it("ücretsiz çıkış yoksa sayı sıfırdır", async () => {

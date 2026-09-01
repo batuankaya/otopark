@@ -68,4 +68,5 @@ export const ISLEM_TIPI_ETIKETLERI: Record<IslemTipi, string> = {
   GIDER_EKLEME: "Gider eklendi",
   GIDER_SILME: "Gider silindi",
   KAYIT_DUZENLEME: "Kayıt düzenlendi",
+  BORC_TAHSILATI: "Borç tahsilatı",
 };

@@ -26,6 +26,13 @@ enum TarifeTuru {
   ABONMAN
 }
 
+/// Ücreti belirleyen araç sınıfı. Büyük araçlar (pickup, kamyonet, minibüs)
+/// daha fazla yer kapladığı için ayrı tarifeden ücretlendirilir.
+enum AracSinifi {
+  BINEK
+  BUYUK
+}
+
 enum OdemeYontemi {
   NAKIT
   KART
@@ -61,6 +68,7 @@ enum IslemTipi {
   GIDER_EKLEME
   GIDER_SILME
   KAYIT_DUZENLEME
+  BORC_TAHSILATI
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +123,9 @@ model Arac {
   model            String?
   renk             String?
   notlar           String?
+  /// Aracın en son hangi sınıftan kaydedildiği. Girişte varsayılan olarak
+  /// seçilir — aynı pickup her gelişinde tekrar işaretlenmesin diye.
+  aracSinifi       AracSinifi @default(BINEK)
   olusturmaTarihi  DateTime @default(now())
   guncellemeTarihi DateTime @updatedAt
 
@@ -135,6 +146,9 @@ model Arac {
 model Tarife {
   id                  String   @id @default(cuid())
   ad                  String
+  /// Bu tarifenin geçerli olduğu araç sınıfı. Her sınıfın kendi yürürlükteki
+  /// tarifesi vardır; `aktifTarifeyiAl` sınıfa göre seçer.
+  aracSinifi          AracSinifi @default(BINEK)
   /// Bu süreyi aşmayan parklardan ücret alınmaz.
   ilkUcretsizDakika   Int      @default(15)
   /// İlk saatin ücreti (giriş ücreti). İlk saat tamamlanmasa da tam alınır.
@@ -151,7 +165,7 @@ model Tarife {
 
   parkKayitlari ParkKaydi[]
 
-  @@index([aktif, gecerlilikBaslangic])
+  @@index([aracSinifi, aktif, gecerlilikBaslangic])
 }
 
 // ---------------------------------------------------------------------------
@@ -235,10 +249,31 @@ model ParkKaydi {
   tarifeId   String
   tarife     Tarife     @relation(fields: [tarifeId], references: [id])
   tarifeTuru TarifeTuru @default(SAATLIK)
+  /// Kayıt anında seçilen araç sınıfı. `tarifeId` zaten sınıfa ait tarifeyi
+  /// gösterir; bu alan raporların tarifeyi sorgulamadan gruplayabilmesi için
+  /// ayrıca tutulur.
+  aracSinifi AracSinifi @default(BINEK)
 
   hesaplananUcret   Decimal?      @db.Decimal(10, 2)
+  /// Bu kayıt için çıkışta FİİLEN alınan para. Tahakkuk eden tutarın
+  /// tamamı alınmadıysa kalanı `borcTutari`na yazılır.
   tahsilEdilenUcret Decimal?      @db.Decimal(10, 2)
   odemeYontemi      OdemeYontemi?
+
+  /// Çıkışta tahsil edilemeyen tutar — "ödemeden çıkan araç".
+  ///
+  /// İskontodan farkıdır: iskontoda alacaktan vazgeçilir ve ciro o kadar
+  /// düşer; borçta alacak durur, kasaya sonra girer. Bu yüzden ikisi ayrı
+  /// alanlarda tutulur, yoksa raporda iskonto gibi görünürdü.
+  borcTutari        Decimal       @default(0) @db.Decimal(10, 2)
+  /// Borçtan kalan bakiye. Araç tekrar geldiğinde çıkış ekranından tahsil
+  /// edildikçe azalır; 0 olduğunda borç kapanmıştır. Kısmi tahsilat bu
+  /// yüzden ayrı alan ister: `borcTutari` denetim için sabit kalır.
+  borcKalan         Decimal       @default(0) @db.Decimal(10, 2)
+  /// Bu çıkışta aracın ESKİ borçlarından tahsil edilen tutar.
+  /// Kasaya girer ama bu kaydın kendi ücreti değildir; ciro ve vardiya
+  /// özeti bu alanı `tahsilEdilenUcret` ile birlikte toplar.
+  tahsilEdilenBorc  Decimal       @default(0) @db.Decimal(10, 2)
 
   durum ParkDurumu @default(ICERIDE)
 
@@ -284,6 +319,8 @@ model ParkKaydi {
   @@index([guncellemeTarihi(sort: Desc)])
   /// Plaka aramasında eşleşen araçlar üzerinden kayda ulaşılıyor.
   @@index([aracId])
+  /// Aracın açık borçları girişte, çıkışta ve aramada sorgulanıyor.
+  @@index([aracId, borcKalan])
   /// Arama "içinde geçen" (LIKE %x%) biçiminde yapılıyor; normal B-tree
   /// indeksi bunu kullanamaz, trigram (GIN) kullanabilir. 55 bin kayıtta
   /// tam plaka araması 110 ms → 3.6 ms.

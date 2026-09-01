@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { araclarinAcikBorclari } from "@/lib/borc";
 import { normalizeAramaTerimi } from "@/lib/plaka";
 import { prisma } from "@/lib/prisma";
 import { oturumAl } from "@/lib/yetki";
@@ -94,6 +95,8 @@ export async function GET(istek: Request) {
       tarifeTuru: true,
       tahsilEdilenUcret: true,
       odemeYontemi: true,
+      aracId: true,
+      borcKalan: true,
       arac: { select: { marka: true, model: true, renk: true, notlar: true } },
     },
   });
@@ -120,9 +123,17 @@ export async function GET(istek: Request) {
     return b.girisZamani.getTime() - a.girisZamani.getTime();
   });
 
+  const gosterilecekler = sirali.slice(0, adet);
+  // Araç bazlı açık borç: satırın kendi borcu değil, aracın TOPLAM borcu.
+  // İçerideki bir araç için "önceki gelişinden borcu var" bilgisi ancak
+  // böyle görünür.
+  const aracBorclari = await araclarinAcikBorclari(
+    gosterilecekler.flatMap((kayit) => (kayit.aracId ? [kayit.aracId] : [])),
+  );
+
   return NextResponse.json({
     toplam: sirali.length,
-    sonuclar: sirali.slice(0, adet).map((kayit) => ({
+    sonuclar: gosterilecekler.map((kayit) => ({
       id: kayit.id,
       plaka: kayit.plaka,
       plakaGosterim: kayit.plakaGosterim,
@@ -134,6 +145,10 @@ export async function GET(istek: Request) {
       tarifeTuru: kayit.tarifeTuru,
       tahsilEdilenUcret: kayit.tahsilEdilenUcret ? Number(kayit.tahsilEdilenUcret) : null,
       odemeYontemi: kayit.odemeYontemi,
+      /** Bu kaydın çıkışından kalan borç. */
+      borcKalan: Number(kayit.borcKalan),
+      /** Aracın tüm çıkışlarından kalan toplam borç. */
+      aracBorcu: kayit.aracId ? (aracBorclari.get(kayit.aracId) ?? 0) : 0,
       fisNo: kayit.fisNo,
       notlar: kayit.notlar ?? kayit.arac?.notlar ?? null,
       marka: kayit.marka ?? kayit.arac?.marka ?? null,

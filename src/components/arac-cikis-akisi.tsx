@@ -7,6 +7,7 @@ import { useFormStatus } from "react-dom";
 
 import { aracCikisiYap, cikisOnizle, type CikisOnizlemesi, type IslemDurumu } from "@/actions/park";
 import { PlakaGoster } from "@/components/plaka-goster";
+import { ARAC_SINIFI_ETIKETLERI } from "@/lib/arac-sinifi";
 import { formatlaPara } from "@/lib/para";
 import { formatlaSure, formatlaTarihSaat, sureMetni, yirmiDortSaatiAstiMi } from "@/lib/tarih";
 
@@ -24,22 +25,42 @@ type AramaSonucu = {
   marka: string | null;
   model: string | null;
   renk: string | null;
+  /** Aracın önceki çıkışlarından kalan toplam borç. */
+  aracBorcu?: number;
 };
 
-function TamamlaButonu({ tutar }: { tutar: number }) {
+function TamamlaButonu({ tutar, borc }: { tutar: number; borc: number }) {
   const { pending } = useFormStatus();
+  // Para alınmadan borçlu çıkış yapılıyorsa düğme mavi kalmamalı: görevli
+  // kasaya para girmediğini renkten de anlasın.
+  const borcluCikis = tutar <= 0 && borc > 0;
   return (
     <button
       type="submit"
       disabled={pending}
-      className="flex min-h-20 w-full items-center justify-center rounded-xl bg-blue-700 text-2xl font-bold text-white shadow-sm hover:bg-blue-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-300 disabled:bg-neutral-400"
+      className={`flex min-h-20 w-full items-center justify-center rounded-xl text-2xl font-bold text-white shadow-sm focus:outline-none focus-visible:ring-4 disabled:bg-neutral-400 ${
+        borcluCikis
+          ? "bg-red-700 hover:bg-red-800 focus-visible:ring-red-300"
+          : "bg-blue-700 hover:bg-blue-800 focus-visible:ring-blue-300"
+      }`}
     >
       {pending
         ? "Tamamlanıyor…"
         : tutar > 0
           ? `${formatlaPara(tutar)} TAHSİL ET`
-          : "ÇIKIŞI TAMAMLA"}
+          : borc > 0
+            ? "BORÇLU ÇIKIŞ YAP"
+            : "ÇIKIŞI TAMAMLA"}
     </button>
+  );
+}
+
+/** Listelerde ve özet kartlarında kullanılan borç rozeti. */
+function BorcRozeti({ tutar }: { tutar: number }) {
+  return (
+    <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800">
+      BORÇ {formatlaPara(tutar)}
+    </span>
   );
 }
 
@@ -62,6 +83,12 @@ export function AracCikisAkisi({
   const [odemeYontemi, setOdemeYontemi] = useState<"NAKIT" | "KART">("NAKIT");
   const [duzeltmeAcik, setDuzeltmeAcik] = useState(false);
   const [elleTutar, setElleTutar] = useState("");
+  const [kismiAcik, setKismiAcik] = useState(false);
+  const [alinanTutar, setAlinanTutar] = useState("");
+  // Eski borç varsa tahsil etmek varsayılan davranış: görevlinin ekstra bir
+  // şey işaretlemesi gerekmesin, gerekirse kaldırsın.
+  const [eskiBorcTahsil, setEskiBorcTahsil] = useState(true);
+  const [borcTahsilatiGirdi, setBorcTahsilatiGirdi] = useState("");
 
   const [durum, islem] = useActionState<IslemDurumu, FormData>(aracCikisiYap, {});
 
@@ -71,6 +98,10 @@ export function AracCikisAkisi({
     setOnizleme(sonuc);
     setDuzeltmeAcik(false);
     setElleTutar("");
+    setKismiAcik(false);
+    setAlinanTutar("");
+    setEskiBorcTahsil(true);
+    setBorcTahsilatiGirdi("");
     setAraniyor(false);
   }, []);
 
@@ -207,6 +238,11 @@ export function AracCikisAkisi({
                       <div className="mt-1 truncate text-sm text-neutral-600">
                         {[sonuc.marka, sonuc.model, sonuc.renk].filter(Boolean).join(" ") || "—"}
                       </div>
+                      {!!sonuc.aracBorcu && (
+                        <div className="mt-1">
+                          <BorcRozeti tutar={sonuc.aracBorcu} />
+                        </div>
+                      )}
                       {sonuc.notlar && (
                         <div className="mt-1 truncate text-sm text-amber-900">{sonuc.notlar}</div>
                       )}
@@ -247,19 +283,50 @@ export function AracCikisAkisi({
   // ---- Seçili kayıt var: ücret ve tahsilat --------------------------------
   const kayit = onizleme.kayit!;
   const ucret = onizleme.ucret!;
-  const elleTutarSayi = elleTutar.trim() === "" ? null : Number(elleTutar.replace(",", "."));
-  const gosterilecekTutar =
-    duzeltmeAcik && elleTutarSayi !== null && Number.isFinite(elleTutarSayi)
-      ? elleTutarSayi
-      : ucret.tutar;
-  const tutarDegisti = Math.abs(gosterilecekTutar - ucret.tutar) > 0.009;
+  const eskiBorc = onizleme.eskiBorc ?? { toplam: 0, kayitlar: [] };
+
+  /** "12,50" / "12.50" → 12.5; boş ya da geçersizse null. */
+  const sayiOku = (metin: string) => {
+    if (metin.trim() === "") return null;
+    const sayi = Number(metin.replace(",", "."));
+    return Number.isFinite(sayi) ? sayi : null;
+  };
+  const yuvarla = (sayi: number) => Math.round(sayi * 100) / 100;
+
+  // Tahakkuk: iskonto uygulandıysa düzeltilmiş tutar, yoksa hesaplanan.
+  const elleTutarSayi = duzeltmeAcik ? sayiOku(elleTutar) : null;
+  const tahakkuk = elleTutarSayi ?? ucret.tutar;
+  const tutarDegisti = Math.abs(tahakkuk - ucret.tutar) > 0.009;
+
+  // Kısmi ödeme: şu an alınan tutar; kalanı borç olarak kaydedilir.
+  const alinanSayi = kismiAcik ? sayiOku(alinanTutar) : null;
+  const alinan = alinanSayi ?? tahakkuk;
+  const alinanFazla = alinan - tahakkuk > 0.009;
+  const yeniBorc = yuvarla(Math.max(0, tahakkuk - alinan));
+
+  // Eski borç tahsilatı — boş bırakılırsa borcun tamamı alınır.
+  const borcTahsilati =
+    eskiBorc.toplam > 0 && eskiBorcTahsil
+      ? yuvarla(
+          Math.min(Math.max(0, sayiOku(borcTahsilatiGirdi) ?? eskiBorc.toplam), eskiBorc.toplam),
+        )
+      : 0;
+
+  /** Kasaya şu an girecek toplam para. */
+  const toplamAlinacak = yuvarla(alinan + borcTahsilati);
 
   return (
     <form action={islem} className="space-y-4">
       <input type="hidden" name="parkKaydiId" value={kayit.id} />
       <input type="hidden" name="odemeYontemi" value={odemeYontemi} />
       {duzeltmeAcik && elleTutar.trim() !== "" && (
-        <input type="hidden" name="tahsilEdilenUcret" value={elleTutar} />
+        <input type="hidden" name="duzeltilmisUcret" value={elleTutar} />
+      )}
+      {kismiAcik && alinanTutar.trim() !== "" && (
+        <input type="hidden" name="alinanTutar" value={alinanTutar} />
+      )}
+      {borcTahsilati > 0 && (
+        <input type="hidden" name="borcTahsilati" value={String(borcTahsilati)} />
       )}
 
       {durum.hata && (
@@ -335,6 +402,18 @@ export function AracCikisAkisi({
                   : "Saatlik"}
             </dd>
           </div>
+          {/* Ücret sınıfa göre değiştiği için tahsilattan önce görünür:
+              yanlış sınıflanmış araç burada yakalanır. */}
+          <div>
+            <dt className="text-neutral-600">Araç sınıfı</dt>
+            <dd
+              className={`font-semibold ${
+                kayit.aracSinifi === "BUYUK" ? "text-amber-800" : "text-neutral-900"
+              }`}
+            >
+              {ARAC_SINIFI_ETIKETLERI[kayit.aracSinifi]}
+            </dd>
+          </div>
         </dl>
       </section>
 
@@ -344,14 +423,114 @@ export function AracCikisAkisi({
         </p>
       )}
 
+      {/* Eski borç — araç önceki gelişinde ödemeden çıkmışsa */}
+      {eskiBorc.toplam > 0 && (
+        <section className="rounded-xl border-2 border-red-600 bg-red-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-bold uppercase tracking-wide text-red-800">
+                Bu aracın önceki borcu
+              </div>
+              <div className="text-3xl font-bold tabular-nums text-red-800">
+                {formatlaPara(eskiBorc.toplam)}
+              </div>
+            </div>
+            <label className="flex min-h-14 cursor-pointer items-center gap-2 rounded-lg border-2 border-red-600 bg-white px-3">
+              <input
+                type="checkbox"
+                checked={eskiBorcTahsil}
+                onChange={(olay) => setEskiBorcTahsil(olay.target.checked)}
+                className="size-6 accent-red-700"
+              />
+              <span className="text-base font-bold text-red-800">Tahsil et</span>
+            </label>
+          </div>
+
+          <ul className="mt-2 space-y-0.5 text-sm text-red-900">
+            {eskiBorc.kayitlar.map((borc) => (
+              <li key={borc.id} className="flex justify-between gap-2">
+                <span>
+                  Fiş {String(borc.fisNo).padStart(6, "0")}
+                  {borc.cikisZamani ? ` · ${formatlaTarihSaat(borc.cikisZamani)}` : ""}
+                </span>
+                <span className="font-bold tabular-nums">{formatlaPara(borc.kalan)}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Müşteri borcun tamamını değil bir kısmını ödeyebilir. */}
+          {eskiBorcTahsil && (
+            <div className="mt-3">
+              <label
+                htmlFor="borc-tahsilati"
+                className="mb-1 block text-sm font-semibold text-red-900"
+              >
+                Borçtan alınan tutar (TL) — boş bırakılırsa tamamı
+              </label>
+              <input
+                id="borc-tahsilati"
+                type="text"
+                inputMode="decimal"
+                value={borcTahsilatiGirdi}
+                onChange={(olay) => setBorcTahsilatiGirdi(olay.target.value)}
+                placeholder={String(eskiBorc.toplam)}
+                className="h-14 w-full rounded-lg border-2 border-red-400 bg-white px-3 text-xl font-bold tabular-nums focus:border-red-700 focus:outline-none"
+              />
+              {borcTahsilati < eskiBorc.toplam && (
+                <p className="mt-1 text-sm font-semibold text-red-900">
+                  Kalan borç: {formatlaPara(eskiBorc.toplam - borcTahsilati)}
+                </p>
+              )}
+            </div>
+          )}
+          {durum.alanHatalari?.borcTahsilati && (
+            <p role="alert" className="mt-1 text-sm font-bold text-red-800">
+              {durum.alanHatalari.borcTahsilati}
+            </p>
+          )}
+        </section>
+      )}
+
       {/* Ücret */}
       <section className="rounded-xl border-2 border-neutral-900 bg-white p-5 text-center">
         <div className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-          Ödenecek tutar
+          {toplamAlinacak === tahakkuk ? "Ödenecek tutar" : "Şimdi alınacak"}
         </div>
         <div className="mt-1 text-5xl font-bold tabular-nums text-neutral-900">
-          {formatlaPara(gosterilecekTutar)}
+          {formatlaPara(toplamAlinacak)}
         </div>
+
+        {/* Toplam birden fazla kalemden oluşuyorsa dökümü gösterilir:
+            görevli "neyi tahsil ediyorum" sorusuna bakarak cevap versin. */}
+        {(borcTahsilati > 0 || yeniBorc > 0) && (
+          <dl className="mx-auto mt-3 max-w-xs space-y-1 border-t border-neutral-200 pt-3 text-sm">
+            <div className="flex justify-between gap-2">
+              <dt className="text-neutral-600">Park ücreti</dt>
+              <dd className="font-bold tabular-nums text-neutral-900">{formatlaPara(tahakkuk)}</dd>
+            </div>
+            {alinan !== tahakkuk && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-neutral-600">Bu ücretten alınan</dt>
+                <dd className="font-bold tabular-nums text-neutral-900">{formatlaPara(alinan)}</dd>
+              </div>
+            )}
+            {borcTahsilati > 0 && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-neutral-600">Eski borç tahsilatı</dt>
+                <dd className="font-bold tabular-nums text-green-700">
+                  +{formatlaPara(borcTahsilati)}
+                </dd>
+              </div>
+            )}
+            {yeniBorc > 0 && (
+              <div className="flex justify-between gap-2 border-t border-neutral-200 pt-1">
+                <dt className="font-semibold text-red-800">Borç kaydedilecek</dt>
+                <dd className="font-bold tabular-nums text-red-800">{formatlaPara(yeniBorc)}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+
         {tutarDegisti && (
           <div className="mt-1 text-sm text-neutral-600">
             Hesaplanan: {formatlaPara(ucret.tutar)}
@@ -364,8 +543,16 @@ export function AracCikisAkisi({
         )}
       </section>
 
+      {/* Plakasız kayıtta borç sonradan araca bağlanamaz — görevli bilsin. */}
+      {yeniBorc > 0 && !kayit.plaka && (
+        <p role="alert" className="rounded-lg border-2 border-red-600 bg-red-50 px-4 py-3 font-semibold text-red-800">
+          Bu kayıtta plaka yok. Borç kaydedilir ama araç tekrar geldiğinde
+          otomatik hatırlatılamaz — çıkışı tamamlamadan önce plakayı eklemeniz önerilir.
+        </p>
+      )}
+
       {/* Ödeme yöntemi */}
-      {gosterilecekTutar > 0 && (
+      {toplamAlinacak > 0 && (
         <fieldset>
           <legend className="mb-1.5 text-base font-semibold text-neutral-900">Ödeme yöntemi</legend>
           <div className="grid grid-cols-2 gap-2">
@@ -395,7 +582,7 @@ export function AracCikisAkisi({
         </fieldset>
       )}
 
-      <TamamlaButonu tutar={gosterilecekTutar} />
+      <TamamlaButonu tutar={toplamAlinacak} borc={yeniBorc} />
 
       {/* İskonto / ücret düzeltme — sebep zorunlu */}
       <div className="rounded-xl border border-neutral-300 bg-white">
@@ -452,6 +639,68 @@ export function AracCikisAkisi({
           </div>
         )}
       </div>
+
+      {/* Eksik tahsilat — müşteri ödeyemediğinde kalan tutar borç olur.
+          İskontodan ayrı tutulur: iskontoda alacaktan vazgeçilir, burada
+          alacak durur ve araç bir daha geldiğinde tahsil edilir. */}
+      {tahakkuk > 0 && (
+        <div className="rounded-xl border border-neutral-300 bg-white">
+          <button
+            type="button"
+            onClick={() => setKismiAcik((acik) => !acik)}
+            aria-expanded={kismiAcik}
+            className="flex min-h-14 w-full items-center justify-between px-4 text-base font-semibold text-neutral-700"
+          >
+            Ödeyemedi / eksik tahsilat (borç)
+            <span aria-hidden className="text-xl">
+              {kismiAcik ? "−" : "+"}
+            </span>
+          </button>
+
+          {kismiAcik && (
+            <div className="space-y-3 border-t border-neutral-200 p-4">
+              <div>
+                <label
+                  htmlFor="alinan-tutar"
+                  className="mb-1 block text-sm font-semibold text-neutral-700"
+                >
+                  Müşteriden şimdi alınan tutar (TL)
+                </label>
+                <input
+                  id="alinan-tutar"
+                  type="text"
+                  inputMode="decimal"
+                  value={alinanTutar}
+                  onChange={(olay) => setAlinanTutar(olay.target.value)}
+                  placeholder={String(tahakkuk)}
+                  aria-invalid={alinanFazla || !!durum.alanHatalari?.alinanTutar}
+                  className="h-14 w-full rounded-lg border-2 border-neutral-300 px-3 text-xl font-bold tabular-nums focus:border-blue-700 focus:outline-none"
+                />
+                <p className="mt-1 text-sm text-neutral-600">
+                  Hiç ödeme alınmadıysa <span className="font-bold">0</span> yazın.
+                </p>
+                {alinanFazla && (
+                  <p role="alert" className="mt-1 text-sm font-bold text-red-700">
+                    Alınan tutar, ödenecek tutardan fazla olamaz.
+                  </p>
+                )}
+                {durum.alanHatalari?.alinanTutar && (
+                  <p role="alert" className="mt-1 text-sm font-bold text-red-700">
+                    {durum.alanHatalari.alinanTutar}
+                  </p>
+                )}
+              </div>
+
+              {yeniBorc > 0 && (
+                <p className="rounded-lg border-2 border-red-500 bg-red-50 px-3 py-2 text-base font-bold text-red-800">
+                  {formatlaPara(yeniBorc)} borç olarak kaydedilecek. Araç tekrar
+                  geldiğinde çıkış ekranında hatırlatılır.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </form>
   );
 }

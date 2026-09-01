@@ -4,7 +4,10 @@ import type { Metadata } from "next";
 
 import { KayitDuzenleFormu } from "@/components/kayit-duzenle-formu";
 import { PlakaGoster } from "@/components/plaka-goster";
+import { ARAC_SINIFLARI } from "@/lib/arac-sinifi";
+import { sayiyaCevir } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
+import { aktifTarifeleriAl } from "@/lib/sorgular";
 import { formatlaTarihSaat, saatGirdisiDegeri, sureMetni } from "@/lib/tarih";
 import { oturumZorunlu } from "@/lib/yetki";
 
@@ -19,10 +22,13 @@ export default async function KayitDuzenleSayfasi({
   await oturumZorunlu();
   const { id } = await params;
 
-  const kayit = await prisma.parkKaydi.findUnique({
-    where: { id },
-    include: { arac: { select: { marka: true, model: true, renk: true, notlar: true } } },
-  });
+  const [kayit, tarifeler] = await Promise.all([
+    prisma.parkKaydi.findUnique({
+      where: { id },
+      include: { arac: { select: { marka: true, model: true, renk: true, notlar: true } } },
+    }),
+    aktifTarifeleriAl(),
+  ]);
 
   if (!kayit) notFound();
 
@@ -86,8 +92,19 @@ export default async function KayitDuzenleSayfasi({
           model: kayit.model ?? kayit.arac?.model ?? null,
           renk: kayit.renk ?? kayit.arac?.renk ?? null,
           notlar: kayit.notlar ?? kayit.arac?.notlar ?? null,
+          aracSinifi: kayit.aracSinifi,
           girisSaati: saatGirdisiDegeri(kayit.girisZamani),
         }}
+        sinifSecenekleri={ARAC_SINIFLARI.flatMap((sinif) => {
+          const tarife = tarifeler[sinif];
+          return tarife
+            ? [{
+                sinif,
+                ilkSaatUcreti: sayiyaCevir(tarife.ilkSaatUcreti),
+                saatlikUcret: sayiyaCevir(tarife.saatlikUcret),
+              }]
+            : [];
+        })}
       />
     </div>
   );

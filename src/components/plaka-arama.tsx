@@ -23,6 +23,10 @@ type Sonuc = {
   marka: string | null;
   model: string | null;
   renk: string | null;
+  /** Bu kaydın çıkışından kalan borç. */
+  borcKalan: number;
+  /** Aracın tüm çıkışlarından kalan toplam borç. */
+  aracBorcu: number;
 };
 
 /**
@@ -153,6 +157,13 @@ export function PlakaArama() {
                   </div>
 
                   <div className="shrink-0 text-right">
+                    {sonuc.aracBorcu > 0 && (
+                      <div className="mb-1">
+                        <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800">
+                          BORÇ {formatlaPara(sonuc.aracBorcu)}
+                        </span>
+                      </div>
+                    )}
                     <span
                       className={`rounded-full px-2 py-1 text-xs font-bold ${
                         yirmiDortSaatiAstiMi(sonuc.girisZamani)
@@ -219,8 +230,15 @@ export function PlakaArama() {
                       ? "Nakit"
                       : sonuc.odemeYontemi === "KART"
                         ? "Kart"
-                        : "Ücretsiz"}
+                        : sonuc.borcKalan > 0
+                          ? "Ödenmedi"
+                          : "Ücretsiz"}
                   </div>
+                  {sonuc.borcKalan > 0 && (
+                    <div className="mt-1 text-sm font-bold text-red-700">
+                      BORÇ {formatlaPara(sonuc.borcKalan)}
+                    </div>
+                  )}
                   <Link
                     href={`/fis/${sonuc.id}`}
                     className="mt-1 inline-block text-sm font-semibold text-blue-800 underline"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { acikBorclariAl, borcToplami } from "@/lib/borc";
 import { cozPlaka } from "@/lib/plaka";
 import { prisma } from "@/lib/prisma";
 import { oturumAl } from "@/lib/yetki";
@@ -32,6 +33,7 @@ export async function GET(istek: Request) {
       notlar: true,
       yabanciPlaka: true,
       ulkeKodu: true,
+      aracSinifi: true,
       parkKayitlari: {
         where: { durum: "ICERIDE" },
         select: { id: true, girisZamani: true, parkAlaniAd: true },
@@ -43,6 +45,9 @@ export async function GET(istek: Request) {
   if (!arac) return NextResponse.json({ bulundu: false });
 
   const icerideKayit = arac.parkKayitlari[0] ?? null;
+  // Ödemeden çıkmış bir araç tekrar geliyorsa görevli daha plakayı yazarken
+  // görsün — kaydettikten sonra öğrenmesi geç olur.
+  const acikBorclar = await acikBorclariAl(arac.id);
 
   return NextResponse.json({
     bulundu: true,
@@ -53,6 +58,9 @@ export async function GET(istek: Request) {
     notlar: arac.notlar,
     yabanciPlaka: arac.yabanciPlaka,
     ulkeKodu: arac.ulkeKodu,
+    // Sınıf araçta hatırlanır: pickup ikinci gelişinde otomatik seçilir.
+    aracSinifi: arac.aracSinifi,
+    borc: acikBorclar.length > 0 ? { toplam: borcToplami(acikBorclar), adet: acikBorclar.length } : null,
     iceride: icerideKayit
       ? {
           kayitId: icerideKayit.id,

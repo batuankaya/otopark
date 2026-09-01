@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AracCikisAkisi } from "@/components/arac-cikis-akisi";
+import { araclarinAcikBorclari } from "@/lib/borc";
 import { prisma } from "@/lib/prisma";
 import { acikVardiyayiBul, oturumZorunlu } from "@/lib/yetki";
 
@@ -56,9 +57,15 @@ export default async function AracCikisiSayfasi({
       girisZamani: true,
       cikisZamani: true,
       durum: true,
+      aracId: true,
       arac: { select: { marka: true, model: true, renk: true, notlar: true } },
     },
   });
+
+  // İçerideki araçların önceki gelişlerinden kalan borcu listede görünsün.
+  const aracBorclari = await araclarinAcikBorclari(
+    icerdekiler.flatMap((k) => (k.aracId ? [k.aracId] : [])),
+  );
 
   return (
     <div className="space-y-4">
@@ -79,6 +86,7 @@ export default async function AracCikisiSayfasi({
           marka: k.marka ?? k.arac?.marka ?? null,
           model: k.model ?? k.arac?.model ?? null,
           renk: k.renk ?? k.arac?.renk ?? null,
+          aracBorcu: k.aracId ? (aracBorclari.get(k.aracId) ?? 0) : 0,
         }))}
       />
     </div>

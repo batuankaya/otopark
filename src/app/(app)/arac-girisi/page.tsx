@@ -2,7 +2,9 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AracGirisFormu } from "@/components/arac-giris-formu";
-import { aktifTarifeyiAl, dolulukAl } from "@/lib/sorgular";
+import { ARAC_SINIFLARI } from "@/lib/arac-sinifi";
+import { sayiyaCevir } from "@/lib/para";
+import { aktifTarifeleriAl, dolulukAl } from "@/lib/sorgular";
 import { acikVardiyayiBul, oturumZorunlu } from "@/lib/yetki";
 
 export const metadata: Metadata = { title: "Araç Girişi" };
@@ -10,8 +12,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AracGirisiSayfasi() {
   await oturumZorunlu(); // oturum ve hesap geçerliliği kontrolü
-  const [tarife, doluluk, acikVardiya] = await Promise.all([
-    aktifTarifeyiAl(),
+  const [tarifeler, doluluk, acikVardiya] = await Promise.all([
+    aktifTarifeleriAl(),
     dolulukAl(),
     acikVardiyayiBul(),
   ]);
@@ -34,7 +36,19 @@ export default async function AracGirisiSayfasi() {
     );
   }
 
-  if (!tarife) {
+  // Yalnızca tarifesi tanımlı sınıflar seçilebilir; hiçbiri yoksa giriş kapalı.
+  const sinifSecenekleri = ARAC_SINIFLARI.flatMap((sinif) => {
+    const tarife = tarifeler[sinif];
+    return tarife
+      ? [{
+          sinif,
+          ilkSaatUcreti: sayiyaCevir(tarife.ilkSaatUcreti),
+          saatlikUcret: sayiyaCevir(tarife.saatlikUcret),
+        }]
+      : [];
+  });
+
+  if (sinifSecenekleri.length === 0) {
     return (
       <div className="rounded-xl border-2 border-red-600 bg-red-50 p-5">
         <h1 className="text-xl font-bold text-red-800">Tanımlı tarife yok</h1>
@@ -64,7 +78,7 @@ export default async function AracGirisiSayfasi() {
         </p>
       )}
 
-      <AracGirisFormu />
+      <AracGirisFormu sinifSecenekleri={sinifSecenekleri} />
     </div>
   );
 }

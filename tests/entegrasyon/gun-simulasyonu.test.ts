@@ -264,7 +264,7 @@ describe("bir iş günü: 08:00 → 20:30", () => {
     saatiAyarla("18:00");
     await cikis("16MNP345", {
       odemeYontemi: "NAKIT",
-      tahsilEdilenUcret: "80",
+      duzeltilmisUcret: "80",
       ucretDuzeltmeSebebi: "Esnaf indirimi — komşu dükkân",
     });
 
@@ -291,7 +291,7 @@ describe("bir iş günü: 08:00 → 20:30", () => {
       form({
         parkKaydiId: kayitlar["34RST678"],
         odemeYontemi: "NAKIT",
-        tahsilEdilenUcret: "10",
+        duzeltilmisUcret: "10",
       }),
     );
 

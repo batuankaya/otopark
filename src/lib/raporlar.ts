@@ -13,11 +13,17 @@ export type RaporAraligi = { baslangic: Date; bitis: Date };
 
 /** Aralıktaki ciro, işlem sayısı ve ödeme yöntemi dağılımı. */
 export async function ciroOzeti({ baslangic, bitis }: RaporAraligi) {
-  const [gruplar, iptalSayisi, girisSayisi] = await Promise.all([
+  const [gruplar, iptalSayisi, girisSayisi, borclar, ucretsizCikisSayisi] = await Promise.all([
     prisma.parkKaydi.groupBy({
       by: ["odemeYontemi"],
       where: { durum: "CIKTI", cikisZamani: { gte: baslangic, lt: bitis } },
-      _sum: { tahsilEdilenUcret: true, hesaplananUcret: true },
+      // Eski borç tahsilatı da ciroya girer: para bu aralıkta kasaya girmiştir.
+      _sum: {
+        tahsilEdilenUcret: true,
+        hesaplananUcret: true,
+        tahsilEdilenBorc: true,
+        borcTutari: true,
+      },
       _count: { _all: true },
     }),
     prisma.parkKaydi.count({
@@ -26,30 +32,110 @@ export async function ciroOzeti({ baslangic, bitis }: RaporAraligi) {
     prisma.parkKaydi.count({
       where: { girisZamani: { gte: baslangic, lt: bitis }, durum: { not: "IPTAL" } },
     }),
+    prisma.parkKaydi.count({
+      where: {
+        durum: "CIKTI",
+        cikisZamani: { gte: baslangic, lt: bitis },
+        borcTutari: { gt: 0 },
+      },
+    }),
+    // Borçlu çıkışta da ödeme yöntemi boştur; "ücretsiz çıktı" sayılmamalı.
+    prisma.parkKaydi.count({
+      where: {
+        durum: "CIKTI",
+        cikisZamani: { gte: baslangic, lt: bitis },
+        odemeYontemi: null,
+        borcTutari: 0,
+      },
+    }),
   ]);
 
-  const topla = (yontem: "NAKIT" | "KART" | null) =>
-    sayiyaCevir(gruplar.find((g) => g.odemeYontemi === yontem)?._sum.tahsilEdilenUcret);
+  const topla = (yontem: "NAKIT" | "KART" | null) => {
+    const grup = gruplar.find((g) => g.odemeYontemi === yontem);
+    return sayiyaCevir(grup?._sum.tahsilEdilenUcret) + sayiyaCevir(grup?._sum.tahsilEdilenBorc);
+  };
 
   const nakit = topla("NAKIT");
   const kart = topla("KART");
   const cikisSayisi = gruplar.reduce((toplam, g) => toplam + g._count._all, 0);
-  const hesaplananToplam = gruplar.reduce(
-    (toplam, g) => toplam + sayiyaCevir(g._sum.hesaplananUcret),
-    0,
-  );
+  const toplaAlan = (alan: "hesaplananUcret" | "tahsilEdilenUcret" | "tahsilEdilenBorc" | "borcTutari") =>
+    gruplar.reduce((toplam, g) => toplam + sayiyaCevir(g._sum[alan]), 0);
+
+  const hesaplananToplam = toplaAlan("hesaplananUcret");
+  const parkUcretiTahsilati = toplaAlan("tahsilEdilenUcret");
+  const tahsilEdilenBorc = toplaAlan("tahsilEdilenBorc");
+  const olusanBorc = toplaAlan("borcTutari");
 
   return {
     nakit,
     kart,
     toplamCiro: nakit + kart,
-    /** Hesaplanan ile tahsil edilen arasındaki fark (iskonto toplamı). */
-    iskontoToplami: Math.round((hesaplananToplam - (nakit + kart)) * 100) / 100,
+    /**
+     * Hesaplanan ile tahakkuk arasındaki fark (iskonto toplamı).
+     * Borç iskonto değildir: tahsil edilmemiş olsa da alacak durduğu için
+     * hesaba katılır, aksi hâlde her borçlu çıkış iskonto gibi görünürdü.
+     */
+    iskontoToplami:
+      Math.round((hesaplananToplam - (parkUcretiTahsilati + olusanBorc)) * 100) / 100,
+    /** Bu aralıkta ödemeden çıkan araçların bıraktığı borç. */
+    olusanBorc: Math.round(olusanBorc * 100) / 100,
+    /** Bu aralıkta kasaya giren eski borç tahsilatı. */
+    tahsilEdilenBorc: Math.round(tahsilEdilenBorc * 100) / 100,
+    borcluCikisSayisi: borclar,
     girisSayisi,
     cikisSayisi,
     iptalSayisi,
-    ucretsizCikisSayisi: gruplar.find((g) => g.odemeYontemi === null)?._count._all ?? 0,
+    ucretsizCikisSayisi,
     ortalamaFis: cikisSayisi > 0 ? Math.round(((nakit + kart) / cikisSayisi) * 100) / 100 : 0,
+  };
+}
+
+/**
+ * Halen açık olan borçlar — en eskisi başta.
+ *
+ * Dönem filtresi UYGULANMAZ: açık borç anlık bir bakiyedir, "geçen hafta
+ * ne kadar borç vardı" diye sorulmaz. Borcun doğduğu çıkış tarihi listede
+ * görünür, ne kadar beklediği oradan okunur.
+ */
+export async function acikBorclar(adet = 50) {
+  const kayitlar = await prisma.parkKaydi.findMany({
+    where: { durum: "CIKTI", borcKalan: { gt: 0 } },
+    orderBy: { cikisZamani: "asc" },
+    take: adet,
+    select: {
+      id: true,
+      fisNo: true,
+      plaka: true,
+      plakaGosterim: true,
+      marka: true,
+      model: true,
+      cikisZamani: true,
+      borcTutari: true,
+      borcKalan: true,
+      arac: { select: { marka: true, model: true } },
+    },
+  });
+
+  const toplam = await prisma.parkKaydi.aggregate({
+    where: { durum: "CIKTI", borcKalan: { gt: 0 } },
+    _sum: { borcKalan: true },
+    _count: { _all: true },
+  });
+
+  return {
+    toplam: sayiyaCevir(toplam._sum.borcKalan),
+    adet: toplam._count._all,
+    kayitlar: kayitlar.map((kayit) => ({
+      id: kayit.id,
+      fisNo: kayit.fisNo,
+      plaka: kayit.plakaGosterim ?? kayit.plaka,
+      arac: [kayit.marka ?? kayit.arac?.marka, kayit.model ?? kayit.arac?.model]
+        .filter(Boolean)
+        .join(" "),
+      cikisZamani: kayit.cikisZamani,
+      tutar: sayiyaCevir(kayit.borcTutari),
+      kalan: sayiyaCevir(kayit.borcKalan),
+    })),
   };
 }
 

@@ -53,8 +53,18 @@ export default async function VardiyaRaporuSayfasi({
       tahsilEdilenUcret: true,
       odemeYontemi: true,
       ucretDuzeltmeSebebi: true,
+      borcTutari: true,
+      tahsilEdilenBorc: true,
     },
   });
+
+  // Devir raporunda "kasaya giren para" ile "açıkta kalan alacak" ayrı
+  // görünmeli: teslim alan görevli neyi devraldığını bilsin.
+  const olusanBorc = cikislar.reduce((toplam, c) => toplam + sayiyaCevir(c.borcTutari), 0);
+  const tahsilEdilenBorc = cikislar.reduce(
+    (toplam, c) => toplam + sayiyaCevir(c.tahsilEdilenBorc),
+    0,
+  );
 
   const acilis = sayiyaCevir(vardiya.acilisKasa);
   const nakit = sayiyaCevir(vardiya.toplamNakit);
@@ -129,6 +139,18 @@ export default async function VardiyaRaporuSayfasi({
               deger={formatlaPara(nakit + kart - giderOzeti.toplamGider)}
               kalin
             />
+            {tahsilEdilenBorc > 0 && (
+              <Satir
+                etiket="Bunun eski borç tahsilatı olan kısmı"
+                deger={formatlaPara(tahsilEdilenBorc)}
+              />
+            )}
+            {olusanBorc > 0 && (
+              <Satir
+                etiket="Ödemeden çıkan araçların borcu (kasa dışı)"
+                deger={formatlaPara(olusanBorc)}
+              />
+            )}
           </div>
         </dl>
 
@@ -169,6 +191,16 @@ export default async function VardiyaRaporuSayfasi({
                   {cikis.ucretDuzeltmeSebebi && (
                     <div className="mt-0.5 truncate text-xs text-amber-800">
                       Düzeltme: {cikis.ucretDuzeltmeSebebi}
+                    </div>
+                  )}
+                  {sayiyaCevir(cikis.borcTutari) > 0 && (
+                    <div className="mt-0.5 text-xs font-bold text-red-700">
+                      {formatlaPara(cikis.borcTutari)} borç kaldı
+                    </div>
+                  )}
+                  {sayiyaCevir(cikis.tahsilEdilenBorc) > 0 && (
+                    <div className="mt-0.5 text-xs font-bold text-green-700">
+                      + {formatlaPara(cikis.tahsilEdilenBorc)} eski borç tahsilatı
                     </div>
                   )}
                 </div>

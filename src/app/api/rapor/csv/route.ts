@@ -1,3 +1,4 @@
+import { ARAC_SINIFI_ETIKETLERI } from "@/lib/arac-sinifi";
 import { islemGunluguYaz } from "@/lib/gunluk";
 import { formatlaPlaka } from "@/lib/plaka";
 import { sayiyaCevir } from "@/lib/para";
@@ -68,6 +69,9 @@ export async function GET(istek: Request) {
       csvSatiri(["Giren araç", ozet.girisSayisi, ""]),
       csvSatiri(["İptal edilen kayıt", ozet.iptalSayisi, ""]),
       csvSatiri(["Ücret düzeltmesi", tutarMetni(ozet.iskontoToplami), ""]),
+      csvSatiri(["Ödemeden çıkan araç", ozet.borcluCikisSayisi, ""]),
+      csvSatiri(["Oluşan borç", tutarMetni(ozet.olusanBorc), ""]),
+      csvSatiri(["Eski borç tahsilatı", tutarMetni(ozet.tahsilEdilenBorc), ""]),
     ];
 
     icerik = satirlar.join("\r\n");
@@ -99,12 +103,16 @@ export async function GET(istek: Request) {
         "Marka",
         "Model",
         "Renk",
+        "Araç sınıfı",
         "Giriş",
         "Çıkış",
         "Süre (dk)",
         "Tarife",
         "Hesaplanan (TL)",
         "Tahsil edilen (TL)",
+        "Borç (TL)",
+        "Kalan borç (TL)",
+        "Eski borç tahsilatı (TL)",
         "Ödeme",
         "Durum",
         "Giriş yapan",
@@ -119,12 +127,16 @@ export async function GET(istek: Request) {
           kayit.marka ?? kayit.arac?.marka ?? "",
           kayit.model ?? kayit.arac?.model ?? "",
           kayit.renk ?? kayit.arac?.renk ?? "",
+          ARAC_SINIFI_ETIKETLERI[kayit.aracSinifi],
           formatlaTarihSaat(kayit.girisZamani),
           kayit.cikisZamani ? formatlaTarihSaat(kayit.cikisZamani) : "",
           kayit.cikisZamani ? hesaplaDakika(kayit.girisZamani, kayit.cikisZamani) : "",
           tarifeEtiketi[kayit.tarifeTuru],
           kayit.hesaplananUcret !== null ? tutarMetni(kayit.hesaplananUcret) : "",
           kayit.tahsilEdilenUcret !== null ? tutarMetni(kayit.tahsilEdilenUcret) : "",
+          tutarMetni(kayit.borcTutari),
+          tutarMetni(kayit.borcKalan),
+          tutarMetni(kayit.tahsilEdilenBorc),
           kayit.odemeYontemi === "NAKIT" ? "Nakit" : kayit.odemeYontemi === "KART" ? "Kart" : "",
           durumEtiketi[kayit.durum],
           kayit.girisYapan.adSoyad,

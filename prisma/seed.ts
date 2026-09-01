@@ -3,7 +3,7 @@
  *
  * Oluşturur:
  *   - 2 kullanıcı (1 ADMIN, 1 GOREVLI)
- *   - 1 tarife (ilk saat + artan saat) ve genel ayarlar
+ *   - Araç sınıfı başına 1 tarife (ilk saat + artan saat) ve genel ayarlar
  *   - 30 örnek park kaydı (çıkmış / içeride / iptal karışık)
  *   - Kapanmış vardiyalar ve kasa devirleri
  *
@@ -23,6 +23,7 @@ import {
   ornekParkKaydiSayisi,
   otoparkBilgisi,
   varsayilanTarife,
+  varsayilanTarifeler,
 } from "./seed-config";
 
 const prisma = new PrismaClient();
@@ -100,24 +101,33 @@ async function main() {
   });
   console.log(`✓ Ayarlar (kapasite: ${otoparkBilgisi.toplamKapasite})`);
 
-  // --- Tarife --------------------------------------------------------------
-  const tarife = await prisma.tarife.create({
-    data: {
-      ad: varsayilanTarife.ad,
-      ilkUcretsizDakika: varsayilanTarife.ilkUcretsizDakika,
-      ilkSaatUcreti: varsayilanTarife.ilkSaatUcreti,
-      saatlikUcret: varsayilanTarife.saatlikUcret,
-      gunlukTavanUcret: varsayilanTarife.gunlukTavanUcret,
-      aktif: true,
-    },
-  });
-  console.log(
-    `✓ Tarife: ${tarife.ad} — ilk ${varsayilanTarife.ilkUcretsizDakika} dk ücretsiz, ` +
-      `ilk saat ${varsayilanTarife.ilkSaatUcreti} TL, sonraki her saat +${varsayilanTarife.saatlikUcret} TL` +
-      (varsayilanTarife.gunlukTavanUcret > 0
-        ? `, günlük tavan ${varsayilanTarife.gunlukTavanUcret} TL`
-        : ", üst sınır yok (saf saatlik)"),
+  // --- Tarifeler (araç sınıfı başına bir tane) -----------------------------
+  const tarifeler = await Promise.all(
+    varsayilanTarifeler.map((t) =>
+      prisma.tarife.create({
+        data: {
+          ad: t.ad,
+          aracSinifi: t.aracSinifi,
+          ilkUcretsizDakika: t.ilkUcretsizDakika,
+          ilkSaatUcreti: t.ilkSaatUcreti,
+          saatlikUcret: t.saatlikUcret,
+          gunlukTavanUcret: t.gunlukTavanUcret,
+          aktif: true,
+        },
+      }),
+    ),
   );
+  // Örnek park kayıtları binek tarifesinden ücretlendirilir.
+  const tarife = tarifeler[0];
+  for (const t of varsayilanTarifeler) {
+    console.log(
+      `✓ Tarife (${t.aracSinifi}): ${t.ad} — ilk ${t.ilkUcretsizDakika} dk ücretsiz, ` +
+        `ilk saat ${t.ilkSaatUcreti} TL, sonraki her saat +${t.saatlikUcret} TL` +
+        (t.gunlukTavanUcret > 0
+          ? `, günlük tavan ${t.gunlukTavanUcret} TL`
+          : ", üst sınır yok (saf saatlik)"),
+    );
+  }
 
   // Park alanı (blok) kullanılmıyor — otopark tek alan olarak işletiliyor.
 

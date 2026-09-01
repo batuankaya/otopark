@@ -207,14 +207,35 @@ describe("aracCikisSemasi", () => {
     expect(sonuc.ucretDuzeltmeSebebi).toBeDefined();
   });
 
-  it("tahsil edilen ücret Türkçe biçimde girilebilir", () => {
+  it("düzeltilmiş ücret Türkçe biçimde girilebilir", () => {
     const sonuc = aracCikisSemasi.safeParse({
       parkKaydiId: "abc",
       odemeYontemi: "NAKIT",
-      tahsilEdilenUcret: "1.234,50",
+      duzeltilmisUcret: "1.234,50",
       ucretDuzeltmeSebebi: "Esnaf indirimi",
     });
-    expect(sonuc.success && sonuc.data.tahsilEdilenUcret).toBe(1234.5);
+    expect(sonuc.success && sonuc.data.duzeltilmisUcret).toBe(1234.5);
+  });
+
+  it("alınan tutar ve borç tahsilatı Türkçe biçimde girilebilir", () => {
+    const sonuc = aracCikisSemasi.safeParse({
+      parkKaydiId: "abc",
+      odemeYontemi: "NAKIT",
+      alinanTutar: "50",
+      borcTahsilati: "1.234,50",
+    });
+    expect(sonuc.success && sonuc.data.alinanTutar).toBe(50);
+    expect(sonuc.success && sonuc.data.borcTahsilati).toBe(1234.5);
+  });
+
+  it("negatif alınan tutar reddedilir", () => {
+    expect(
+      hatalar(aracCikisSemasi, {
+        parkKaydiId: "abc",
+        odemeYontemi: "NAKIT",
+        alinanTutar: "-10",
+      }).alinanTutar,
+    ).toBeDefined();
   });
 });
 

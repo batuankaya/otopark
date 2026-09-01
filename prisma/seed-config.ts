@@ -22,21 +22,38 @@ export const otoparkBilgisi = {
   fisAltNotu: "Bizi tercih ettiğiniz için teşekkür ederiz.",
 };
 
-export const varsayilanTarife = {
-  ad: "Standart Tarife",
-  /** Bu süreyi aşmayan parklardan ücret alınmaz (dakika). */
-  ilkUcretsizDakika: 15,
-  /** İlk saatin (giriş) ücreti — ilk saat tamamlanmasa da tam alınır (TL). */
-  ilkSaatUcreti: 100,
-  /** İlk saatten SONRAKİ her başlayan saat için eklenen tutar (TL). */
-  saatlikUcret: 50,
-  /**
-   * Günlük üst sınır (TL). Otopark saf saatlik çalıştığı için 0'dır —
-   * yani üst sınır uygulanmaz. İleride bir gün için tavan koymak isterseniz
-   * buraya tutar yazmanız (ya da Ayarlar'dan girmeniz) yeterli.
-   */
-  gunlukTavanUcret: 0,
-};
+/**
+ * Araç sınıfı başına bir tarife. Büyük araçlar (pickup, kamyonet, minibüs)
+ * daha fazla yer kapladığı için binekten pahalıdır.
+ *
+ * Günlük üst sınır (TL) 0'dır: otopark saf saatlik çalışıyor, yani üst sınır
+ * uygulanmaz. İleride bir gün için tavan koymak isterseniz buraya tutar
+ * yazmanız (ya da Ayarlar'dan girmeniz) yeterli.
+ */
+export const varsayilanTarifeler = [
+  {
+    aracSinifi: "BINEK",
+    ad: "Binek Tarifesi",
+    /** Bu süreyi aşmayan parklardan ücret alınmaz (dakika). */
+    ilkUcretsizDakika: 15,
+    /** İlk saatin (giriş) ücreti — ilk saat tamamlanmasa da tam alınır (TL). */
+    ilkSaatUcreti: 100,
+    /** İlk saatten SONRAKİ her başlayan saat için eklenen tutar (TL). */
+    saatlikUcret: 50,
+    gunlukTavanUcret: 0,
+  },
+  {
+    aracSinifi: "BUYUK",
+    ad: "Büyük Araç Tarifesi",
+    ilkUcretsizDakika: 15,
+    ilkSaatUcreti: 150,
+    saatlikUcret: 100,
+    gunlukTavanUcret: 0,
+  },
+] as const;
+
+/** Örnek park kayıtlarının ücretlendirildiği tarife. */
+export const varsayilanTarife = varsayilanTarifeler[0];
 
 export const kullanicilar = {
   admin: {

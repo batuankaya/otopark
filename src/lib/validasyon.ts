@@ -197,6 +197,8 @@ export const aracGirisSemasi = z
     renk: opsiyonelMetin(30),
     parkAlaniId: z.preprocess(bosluklarıTemizle, z.string().optional()),
     tarifeTuru: z.enum(["SAATLIK", "GUNLUK", "ABONMAN"]).default("SAATLIK"),
+    /** Ücreti belirleyen sınıf; her sınıfın kendi tarifesi vardır. */
+    aracSinifi: z.enum(["BINEK", "BUYUK"]).default("BINEK"),
     /**
      * Geriye dönük giriş — yalnızca AYNI GÜN, yalnızca saat ("HH:MM").
      * Görevli 16:00'da "bu araç 15:25'te gelmişti" diyebilsin diye tarih
@@ -268,9 +270,19 @@ export const aracGirisSemasi = z
 export const aracCikisSemasi = z.object({
   parkKaydiId: z.string().min(1, "Park kaydı bulunamadı."),
   odemeYontemi: z.enum(["NAKIT", "KART"], { message: "Ödeme yöntemi seçilmelidir." }),
-  /** Görevli ücreti değiştirdiyse dolu gelir. */
-  tahsilEdilenUcret: tutarAlani("Tahsil edilen ücret").optional(),
+  /**
+   * İskonto sonrası tahakkuk eden tutar — görevli ücreti değiştirdiyse dolu
+   * gelir. Boşsa tarifeden hesaplanan tutar geçerlidir.
+   */
+  duzeltilmisUcret: tutarAlani("Tahsil edilen ücret").optional(),
   ucretDuzeltmeSebebi: z.preprocess(bosluklarıTemizle, z.string().min(5, "Düzeltme sebebi en az 5 karakter olmalıdır.").max(500).optional()),
+  /**
+   * Müşterinin ŞU AN ödediği tutar. Tahakkuktan azsa aradaki fark borç
+   * olarak kaydedilir. Boşsa tahakkukun tamamı ödenmiş sayılır.
+   */
+  alinanTutar: tutarAlani("Alınan tutar").optional(),
+  /** Aracın eski borçlarından bu işlemde tahsil edilen tutar. */
+  borcTahsilati: tutarAlani("Borç tahsilatı").optional(),
   notlar: opsiyonelMetin(500),
 });
 
@@ -290,6 +302,8 @@ export const kayitDuzenleSemasi = z
     marka: opsiyonelMetin(50),
     model: opsiyonelMetin(50),
     renk: opsiyonelMetin(30),
+    /** Yanlış sınıf seçilmişse düzeltilebilir — ücreti doğrudan etkiler. */
+    aracSinifi: z.enum(["BINEK", "BUYUK"]).default("BINEK"),
     girisSaati: z.preprocess(bosluklarıTemizle, z.string().optional()),
     notlar: opsiyonelMetin(500),
   })
@@ -418,6 +432,7 @@ export const vardiyaKapatSemasi = z.object({
 
 export const tarifeSemasi = z.object({
   ad: z.string().trim().min(3, "Tarife adı en az 3 karakter olmalıdır.").max(60),
+  aracSinifi: z.enum(["BINEK", "BUYUK"]).default("BINEK"),
   ilkUcretsizDakika: z.coerce
     .number({ message: "Ücretsiz süre sayı olmalıdır." })
     .int("Ücretsiz süre tam sayı olmalıdır.")

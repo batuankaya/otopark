@@ -42,13 +42,17 @@ export type TemelVeri = Awaited<ReturnType<typeof temelVeriyiKur>>;
 /**
  * Otoparkın çalışması için gereken asgari veri.
  *
- * Tarife bilerek gerçek işletmeninkiyle aynı: ilk saat 100 TL, sonraki her
- * saat +50 TL, ilk 15 dakika ücretsiz, günlük tavan yok.
+ * Tarifeler bilerek gerçek işletmeninkiyle aynı: binek ilk saat 100 TL +
+ * sonraki her saat 50 TL, büyük araç 150 TL + 100 TL. İlk 15 dakika ücretsiz,
+ * günlük tavan yok.
  */
 export async function temelVeriyiKur(
   secenekler: { kapasite?: number; sifirlamaSaati?: number } = {},
 ) {
-  const { kapasite = 100, sifirlamaSaati = 12 } = secenekler;
+  // Sıfırlama saati varsayılanı üretimdekiyle aynı: gece yarısı. Çalışma
+  // saatlerinin içine düşen bir değer (örn. 12) testlerin ortasında vardiyayı
+  // kapatır ve sonraki işlemler sessizce başarısız olur.
+  const { kapasite = 100, sifirlamaSaati = 0 } = secenekler;
 
   /**
    * Şifre değişim anı açıkça geçmişe yazılır.
@@ -92,18 +96,36 @@ export async function temelVeriyiKur(
     }),
   ]);
 
-  const tarife = await prisma.tarife.create({
-    data: {
-      ad: "Standart",
-      ilkUcretsizDakika: 15,
-      ilkSaatUcreti: new Prisma.Decimal(100),
-      saatlikUcret: new Prisma.Decimal(50),
-      gunlukTavanUcret: new Prisma.Decimal(0),
-      aktif: true,
-      // Geçmişte başlasın: `aktifTarifeyiAl` yalnızca başlamış tarifeyi alır.
-      gecerlilikBaslangic: new Date("2020-01-01T00:00:00.000Z"),
-    },
-  });
+  // Geçmişte başlasın: `aktifTarifeyiAl` yalnızca başlamış tarifeyi alır.
+  const tarifeBaslangici = new Date("2020-01-01T00:00:00.000Z");
+
+  const [tarife, buyukTarife] = await Promise.all([
+    prisma.tarife.create({
+      data: {
+        ad: "Standart",
+        aracSinifi: "BINEK",
+        ilkUcretsizDakika: 15,
+        ilkSaatUcreti: new Prisma.Decimal(100),
+        saatlikUcret: new Prisma.Decimal(50),
+        gunlukTavanUcret: new Prisma.Decimal(0),
+        aktif: true,
+        gecerlilikBaslangic: tarifeBaslangici,
+      },
+    }),
+    // Büyük araç tarifesi de üretimdekiyle aynı: ilk saat 150, sonraki 100.
+    prisma.tarife.create({
+      data: {
+        ad: "Büyük Araç",
+        aracSinifi: "BUYUK",
+        ilkUcretsizDakika: 15,
+        ilkSaatUcreti: new Prisma.Decimal(150),
+        saatlikUcret: new Prisma.Decimal(100),
+        gunlukTavanUcret: new Prisma.Decimal(0),
+        aktif: true,
+        gecerlilikBaslangic: tarifeBaslangici,
+      },
+    }),
+  ]);
 
   const [ayar, alan] = await Promise.all([
     prisma.ayar.create({
@@ -117,7 +139,7 @@ export async function temelVeriyiKur(
     prisma.parkAlani.create({ data: { ad: "Zemin", kapasite: 50, sira: 1 } }),
   ]);
 
-  return { yonetici, gorevli, gorevliIki, tarife, ayar, alan };
+  return { yonetici, gorevli, gorevliIki, tarife, buyukTarife, ayar, alan };
 }
 
 // ---------------------------------------------------------------------------
