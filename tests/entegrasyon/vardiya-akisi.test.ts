@@ -195,6 +195,13 @@ describe("vardiya ve kasa", () => {
   // -------------------------------------------------------------------------
 
   describe("günlük otomatik sıfırlama", () => {
+    // Bu testler sınır davranışını sınıyor, o yüzden sıfırlama saati bilerek
+    // çalışma saatlerinin içine (12:00) alınıyor — sınırı geçmek kolay olsun.
+    beforeEach(async () => {
+      await prisma.ayar.update({ where: { id: 1 }, data: { vardiyaSifirlamaSaati: 12 } });
+      sifirlamaOnbelleginiTemizle();
+    });
+
     it("sıfırlama saatinden sonra açılmış vardiyaya dokunulmaz", async () => {
       saatiAyarla("14:00");
       const vardiyaId = await vardiyaAcVeHizala("500");
@@ -206,18 +213,75 @@ describe("vardiya ve kasa", () => {
       expect(await prisma.vardiya.count()).toBe(1);
     });
 
-    it("sınır geçilince eski vardiya kapanır, yenisi devralır", async () => {
+    it("sınır geçilince vardiya kapanır ve YENİSİ AÇILMAZ", async () => {
       saatiAyarla("08:00");
       const eskiId = await vardiyaAcVeHizala("500");
 
       saatiAyarla("12:30");
       const acik = await acikVardiyayiBul();
 
-      expect(acik!.id).not.toBe(eskiId);
+      // Yeni vardiyayı sabah gelen görevli açar; sistem kendiliğinden açmaz.
+      expect(acik).toBeNull();
+      expect(await prisma.vardiya.count()).toBe(1);
+
       const eski = await prisma.vardiya.findUniqueOrThrow({ where: { id: eskiId } });
       expect(eski.otomatikKapanis).toBe(true);
       expect(eski.bitis!.toISOString()).toBe(istanbulAni("12:00").toISOString());
-      expect(acik!.baslangic.toISOString()).toBe(istanbulAni("12:00").toISOString());
+    });
+
+    it("açık vardiya kalmadığı için araç işlemi yapılamaz", async () => {
+      saatiAyarla("08:00");
+      await vardiyaAcVeHizala("500");
+
+      saatiAyarla("12:30");
+      const sonuc = await aracGirisiYap(
+        BOS_DURUM,
+        form({ plaka: "34ABC123", girisSaati: suankiSaat() }),
+      );
+
+      expect(sonuc.hata).toContain("açık vardiya yok");
+      expect(sonuc.vardiyaGerekli).toBe(true);
+    });
+
+    it("kapanan vardiyanın notunda kasada olması gereken tutar yazar", async () => {
+      // Sabah gelen görevli açılış kasasını elle giriyor; karşılaştıracağı
+      // rakamı hesaplamak zorunda kalmasın diye nota yazılır.
+      saatiAyarla("08:00");
+      const eskiId = await vardiyaAcVeHizala("500");
+
+      saatiAyarla("09:00");
+      const giren = await aracGirisiYap(
+        BOS_DURUM,
+        form({ plaka: "34ABC123", girisSaati: suankiSaat() }),
+      );
+      saatiAyarla("10:30");
+      await aracCikisiYap(
+        BOS_DURUM,
+        form({ parkKaydiId: giren.yeniKayitId!, odemeYontemi: "NAKIT" }),
+      );
+
+      saatiAyarla("12:30");
+      await acikVardiyayiBul();
+
+      // 500 açılış + 150 nakit tahsilat = 650
+      const eski = await prisma.vardiya.findUniqueOrThrow({ where: { id: eskiId } });
+      expect(eski.notlar).toContain("Kasada olması gereken: 650 TL");
+    });
+
+    it("sabah açılan yeni vardiya kasayı devralmaz, görevli elle girer", async () => {
+      saatiAyarla("08:00");
+      await vardiyaAcVeHizala("500");
+
+      saatiAyarla("12:30");
+      await acikVardiyayiBul();
+
+      // Görevli saydığı tutarı giriyor — sistem bir tutar dayatmıyor.
+      const acilis = await vardiyaAc(BOS_DURUM, form({ acilisKasa: "480" }));
+      expect(acilis.basarili).toBe(true);
+
+      const yeni = await prisma.vardiya.findFirstOrThrow({ where: { bitis: null } });
+      expect(sayiyaCevir(yeni.acilisKasa)).toBe(480);
+      expect(yeni.otomatikKapanis).toBe(false);
     });
 
     it("uygulama günlerce kapalı kalsa bile en son sınıra göre kapanır", async () => {
@@ -254,12 +318,14 @@ describe("vardiya ve kasa", () => {
       );
 
       saatiAyarla("12:30");
-      const yeni = await acikVardiyayiBul();
+      expect(await acikVardiyayiBul()).toBeNull();
 
-      // 500 + 150 − 50 = 600
+      // Kapanan vardiyanın hesabı bozulmamalı: 500 + 150 − 50 = 600.
+      // Bu tutar sabah açılışta göreve önerilecek referans.
       const ozet = await vardiyaOzetiHesapla(eskiId);
       expect(ozet.beklenenKasa).toBe(600);
-      expect(sayiyaCevir(yeni!.acilisKasa)).toBe(600);
+      expect(ozet.toplamNakit).toBe(150);
+      expect(ozet.nakitGider).toBe(50);
     });
 
     it("sıfırlama saati ayarlanabilir (gece yarısı)", async () => {
@@ -288,8 +354,12 @@ describe("vardiya ve kasa", () => {
         form({ plaka: "34ABC123", girisSaati: suankiSaat() }),
       );
 
-      // …vardiya devrediyor, araç öğleden sonra çıkıyor.
+      // …vardiya sınırda kapanıyor, görevli yeni vardiyayı elle açıyor,
+      // araç öğleden sonra çıkıyor.
       saatiAyarla("13:00");
+      expect(await acikVardiyayiBul()).toBeNull();
+      await vardiyaAc(BOS_DURUM, form({ acilisKasa: "500" }));
+
       await aracCikisiYap(
         BOS_DURUM,
         form({ parkKaydiId: giren.yeniKayitId!, odemeYontemi: "NAKIT" }),
@@ -336,8 +406,10 @@ describe("vardiya ve kasa", () => {
       // İki görevli aynı anda sayfa açıyor; ikisi de sıfırlamayı tetikler.
       await Promise.all([acikVardiyayiBul(), acikVardiyayiBul()]);
 
-      expect(await prisma.vardiya.count()).toBe(2);
-      expect(await prisma.vardiya.count({ where: { bitis: null } })).toBe(1);
+      // Vardiya iki kez kapatılmaya çalışılsa da tek kayıt kalır ve
+      // kendiliğinden yeni vardiya oluşmaz.
+      expect(await prisma.vardiya.count()).toBe(1);
+      expect(await prisma.vardiya.count({ where: { bitis: null } })).toBe(0);
     });
   });
 

@@ -5,7 +5,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { vardiyaAc, vardiyaKapat, type VardiyaDurumu } from "@/actions/vardiya";
-import { formatlaPara, tutarAyristir } from "@/lib/para";
+import { formatlaPara, formatlaTutar, tutarAyristir } from "@/lib/para";
 
 function Gonder({ etiket, bekleyen, renk }: { etiket: string; bekleyen: string; renk: string }) {
   const { pending } = useFormStatus();
@@ -24,7 +24,18 @@ function Gonder({ etiket, bekleyen, renk }: { etiket: string; bekleyen: string; 
 // Vardiya aç
 // ---------------------------------------------------------------------------
 
-export function VardiyaAcFormu() {
+export function VardiyaAcFormu({
+  /**
+   * Önceki vardiyadan kasada kalması gereken tutar (yoksa null).
+   *
+   * Yalnızca ÖNERİDİR: alan önceden doldurulur ama görevli saydığı rakamı
+   * yazmalı. Gün sonundaki fark bu tutara göre hesaplandığı için, sayılmadan
+   * onaylanan bir açılış kasası mutabakatı anlamsız kılar.
+   */
+  onerilenKasa,
+}: {
+  onerilenKasa?: number | null;
+}) {
   const router = useRouter();
   const [durum, islem] = useActionState<VardiyaDurumu, FormData>(vardiyaAc, {});
 
@@ -51,7 +62,7 @@ export function VardiyaAcFormu() {
           name="acilisKasa"
           type="text"
           inputMode="decimal"
-          defaultValue="0"
+          defaultValue={onerilenKasa != null ? formatlaTutar(onerilenKasa) : "0"}
           required
           aria-invalid={!!durum.alanHatalari?.acilisKasa}
           className="h-16 w-full rounded-lg border-2 border-neutral-400 px-4 text-2xl font-bold tabular-nums focus:border-blue-700 focus:outline-none"
@@ -64,6 +75,12 @@ export function VardiyaAcFormu() {
         <p className="mt-1 text-sm text-neutral-600">
           Vardiyaya başlarken kasada bulunan para. Gün sonunda fark bu tutara göre hesaplanır.
         </p>
+        {onerilenKasa != null && (
+          <p className="mt-1 text-sm font-semibold text-amber-800">
+            Önceki vardiyada kasada {formatlaTutar(onerilenKasa)} TL kalmış olmalı.
+            Parayı sayıp doğrulayın; farklıysa saydığınız tutarı yazın.
+          </p>
+        )}
       </div>
 
       <div>

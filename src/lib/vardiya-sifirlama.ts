@@ -61,14 +61,21 @@ export function sifirlamaOnbelleginiTemizle(): void {
 }
 
 /**
- * Sınırı geçmiş açık vardiya varsa kapatır ve yerine yenisini açar.
+ * Sınırı geçmiş açık vardiya varsa KAPATIR. Yerine yenisi açılmaz.
  *
- * Kasa devri kesintisiz olsun diye yeni vardiyanın açılış kasası, kapanan
- * vardiyanın "kasada olması gereken" tutarıdır: para fiziksel olarak kasada
- * durmaya devam ediyor, yalnızca defter yeni sayfaya geçiyor.
+ * Yeni vardiyayı sabah işe gelen görevli kendisi açar. Sebebi: vardiya
+ * açmak kasayı sayıp tutarı onaylamak demektir. Sistem geceleyin kendi
+ * kendine yeni vardiya açsaydı, açılış kasası hiç kimsenin saymadığı bir
+ * tutar olurdu ve gün sonundaki fark da o sayılmamış tutara göre
+ * hesaplanırdı — yani mutabakat anlamını yitirirdi.
  *
  * Kapanışta kasa SAYILMAZ — ortada sayacak kimse yok. `kapanisKasa` ve
  * `fark` boş bırakılır ki uydurma bir "kasa açığı" raporlanmasın.
+ *
+ * Sonuç olarak gece yarısından sonra, sabah vardiya açılana kadar sistemde
+ * açık vardiya bulunmaz; bu sürede araç giriş/çıkışı yapılamaz (bkz.
+ * `islemIzniAl`). Otopark 08:00–20:30 çalıştığı için bu bir kısıtlama değil,
+ * istenen davranıştır.
  */
 export async function vardiyaSifirlamasiniUygula(): Promise<void> {
   try {
@@ -86,7 +93,6 @@ export async function vardiyaSifirlamasiniUygula(): Promise<void> {
     if (acik.baslangic.getTime() >= sinir.getTime()) return;
 
     const ozet = await vardiyaOzetiHesapla(acik.id);
-    const devredenKasa = new Prisma.Decimal(ozet.beklenenKasa);
     const sinirMetni = formatlaTarihSaat(sinir);
 
     await prisma.$transaction(async (tx) => {
@@ -100,23 +106,20 @@ export async function vardiyaSifirlamasiniUygula(): Promise<void> {
           toplamNakit: new Prisma.Decimal(ozet.toplamNakit),
           toplamKart: new Prisma.Decimal(ozet.toplamKart),
           // kapanisKasa ve fark bilerek boş: kasa sayımı yapılmadı.
-          notlar: [acik.notlar, `Günlük sıfırlama saatinde (${sinirMetni}) otomatik kapatıldı.`]
+          //
+          // Kasada olması gereken tutar nota yazılır: yeni vardiyayı sabah
+          // görevli açacak ve açılış kasasını elle girecek. Karşılaştıracağı
+          // rakamı bulmak için hesap yapmak zorunda kalmasın.
+          notlar: [
+            acik.notlar,
+            `Günlük sıfırlama saatinde (${sinirMetni}) otomatik kapatıldı. ` +
+              `Kasada olması gereken: ${ozet.beklenenKasa} TL.`,
+          ]
             .filter(Boolean)
             .join(" · "),
         },
       });
       if (kapanan.count === 0) throw new Error("SIFIRLAMA_GEREKSIZ");
-
-      const yeni = await tx.vardiya.create({
-        data: {
-          // Sistem kapattığı için "açan" olarak önceki vardiyanın sahibi
-          // devreder; işlem günlüğü zaten otomatik olduğunu yazıyor.
-          kullaniciId: acik.kullaniciId,
-          baslangic: sinir,
-          acilisKasa: devredenKasa,
-          notlar: `Günlük sıfırlama (${sinirMetni}) ile otomatik açıldı.`,
-        },
-      });
 
       await islemGunluguYazTx(tx, {
         kullaniciId: acik.kullaniciId,
@@ -133,15 +136,8 @@ export async function vardiyaSifirlamasiniUygula(): Promise<void> {
         },
         aciklama:
           `Vardiya günlük sıfırlama saatinde otomatik kapatıldı (${sinirMetni}) — ` +
-          `nakit ${ozet.toplamNakit} TL, kart ${ozet.toplamKart} TL. Kasa sayılmadı.`,
-      });
-
-      await islemGunluguYazTx(tx, {
-        kullaniciId: acik.kullaniciId,
-        islemTipi: "VARDIYA_ACILIS",
-        ilgiliKayitId: yeni.id,
-        yeniDeger: { otomatik: true, acilisKasa: ozet.beklenenKasa, oncekiVardiyaId: acik.id },
-        aciklama: `Yeni vardiya otomatik açıldı — devreden kasa ${ozet.beklenenKasa} TL`,
+          `nakit ${ozet.toplamNakit} TL, kart ${ozet.toplamKart} TL. Kasa sayılmadı. ` +
+          `Kasada olması gereken ${ozet.beklenenKasa} TL; yeni vardiyayı sabah görevli açacak.`,
       });
     });
   } catch (hata) {
