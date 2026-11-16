@@ -1,110 +1,65 @@
 /**
- * Seed script — geliştirme ve demo verisi.
+ * Seed — boş veritabanına ilk kurulum.
  *
  * Oluşturur:
- *   - 2 kullanıcı (1 ADMIN, 1 GOREVLI)
- *   - Araç sınıfı başına 1 tarife (ilk saat + artan saat) ve genel ayarlar
- *   - 30 örnek park kaydı (çıkmış / içeride / iptal karışık)
- *   - Kapanmış vardiyalar ve kasa devirleri
+ *   - Genel ayarlar
+ *   - Araç sınıfı başına 1 tarife
+ *   - 1 yönetici hesabı (e-posta ve şifre .env'den)
  *
- * Değerler `prisma/seed-config.ts` dosyasından okunur.
+ * Tarife ve otopark değerleri `prisma/seed-config.ts`ten okunur. Görevli
+ * hesapları sonradan Ayarlar > Kullanıcılar'dan açılır.
+ *
+ * Güvenlik kuralları:
+ *   - Depoda hiçbir kimlik bilgisi yoktur. Depo herkese açık; içinde yazılı
+ *     bir e-posta/şifreyle kurulan sistemin yönetici paneli de herkese açık
+ *     olurdu. `SEED_ADMIN_EMAIL` ve `SEED_ADMIN_SIFRE` zorunludur ve şifre,
+ *     uygulamanın şifre kurallarından geçmek zorundadır.
+ *   - Yalnızca BOŞ veritabanında çalışır, hiçbir şey silmez. Canlı sistemde
+ *     yanlışlıkla çalıştırılması kayıtları yok etmesin diye.
  *
  * Çalıştırmak için:  npx prisma db seed
  * (veya sıfırdan:    npx prisma migrate reset)
  */
 
-import { PrismaClient, type Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 
-import { MARKALAR as KATALOG } from "../src/lib/araclar";
-import { hesaplaUcret } from "../src/lib/ucret";
-import {
-  kullanicilar,
-  ornekParkKaydiSayisi,
-  otoparkBilgisi,
-  varsayilanTarife,
-  varsayilanTarifeler,
-} from "./seed-config";
+import { sifreAlani } from "../src/lib/validasyon";
+import { otoparkBilgisi, varsayilanTarifeler } from "./seed-config";
 
 const prisma = new PrismaClient();
 
-// ---------------------------------------------------------------------------
-// Yardımcılar
-// ---------------------------------------------------------------------------
-
-/** Tekrarlanabilir sonuç için sabit tohumlu basit rastgele üretici. */
-let tohum = 20260727;
-function rastgele(): number {
-  tohum = (tohum * 1664525 + 1013904223) % 4294967296;
-  return tohum / 4294967296;
-}
-
-const rastgeleTamsayi = (enAz: number, enCok: number) =>
-  enAz + Math.floor(rastgele() * (enCok - enAz + 1));
-
-const rastgeleSec = <T>(liste: readonly T[]): T => liste[rastgeleTamsayi(0, liste.length - 1)];
-
-const PLAKA_HARFLERI = "ABCDEFGHIJKLMNOPRSTUVYZ"; // Q, W, X yok
-const IL_KODLARI = ["26", "34", "06", "35", "16", "42", "01", "07", "43", "38"];
-
-/** Geçerli bir Türk plakası üretir. */
-function plakaUret(kullanilan: Set<string>): string {
-  for (let deneme = 0; deneme < 500; deneme++) {
-    const il = rastgeleSec(IL_KODLARI);
-    const harfSayisi = rastgeleTamsayi(1, 3);
-    let harfler = "";
-    for (let i = 0; i < harfSayisi; i++) {
-      harfler += PLAKA_HARFLERI[rastgeleTamsayi(0, PLAKA_HARFLERI.length - 1)];
-    }
-    const rakamSayisi = 5 - harfSayisi; // 1 harf→4, 2 harf→3, 3 harf→2 rakam
-    const enAz = 10 ** (rakamSayisi - 1);
-    const rakamlar = String(rastgeleTamsayi(enAz, 10 ** rakamSayisi - 1));
-    const plaka = `${il}${harfler}${rakamlar}`;
-    if (!kullanilan.has(plaka)) {
-      kullanilan.add(plaka);
-      return plaka;
-    }
-  }
-  throw new Error("Benzersiz plaka üretilemedi.");
-}
-
-// Marka/model listesi uygulamayla ortak: src/lib/araclar.ts
-// (Modeli olmayan "Diğer" markası örnek veride kullanılmaz.)
-const MARKALAR = KATALOG.filter((m) => m.modeller.length > 0);
-const RENKLER = ["Beyaz", "Siyah", "Gri", "Kırmızı", "Mavi", "Lacivert", "Gümüş"];
-
-const gunler = (sayi: number) => sayi * 24 * 60 * 60 * 1000;
-const dakikalar = (sayi: number) => sayi * 60 * 1000;
-
-// ---------------------------------------------------------------------------
-// Seed
-// ---------------------------------------------------------------------------
+const ortamSemasi = z.object({
+  SEED_ADMIN_EMAIL: z.string().trim().toLowerCase().email("geçerli bir e-posta olmalı"),
+  SEED_ADMIN_SIFRE: sifreAlani,
+});
 
 async function main() {
-  console.log("Seed başlıyor…\n");
+  const ortam = ortamSemasi.safeParse(process.env);
+  if (!ortam.success) {
+    const sorunlar = ortam.error.issues.map((s) => `  - ${s.path.join(".")}: ${s.message}`);
+    throw new Error(
+      ".env içindeki yönetici bilgileri eksik ya da geçersiz:\n" + sorunlar.join("\n"),
+    );
+  }
+  const { SEED_ADMIN_EMAIL: email, SEED_ADMIN_SIFRE: sifre } = ortam.data;
 
-  // --- Temizlik (bağımlılık sırasına göre) --------------------------------
-  await prisma.islemGunlugu.deleteMany();
-  await prisma.gider.deleteMany();
-  await prisma.parkKaydi.deleteMany();
-  await prisma.abonman.deleteMany();
-  await prisma.vardiya.deleteMany();
-  await prisma.arac.deleteMany();
-  await prisma.parkAlani.deleteMany();
-  await prisma.tarife.deleteMany();
-  await prisma.kullanici.deleteMany();
-  await prisma.ayar.deleteMany();
+  const [kullaniciSayisi, ayarSayisi] = await Promise.all([
+    prisma.kullanici.count(),
+    prisma.ayar.count(),
+  ]);
+  if (kullaniciSayisi > 0 || ayarSayisi > 0) {
+    throw new Error(
+      "Veritabanı boş değil; seed yalnızca ilk kurulumda çalışır ve hiçbir veriyi silmez.",
+    );
+  }
 
-  // --- Ayarlar -------------------------------------------------------------
-  await prisma.ayar.create({
-    data: { id: 1, ...otoparkBilgisi },
-  });
-  console.log(`✓ Ayarlar (kapasite: ${otoparkBilgisi.toplamKapasite})`);
+  await prisma.$transaction(async (tx) => {
+    await tx.ayar.create({ data: { id: 1, ...otoparkBilgisi } });
 
-  // --- Tarifeler (araç sınıfı başına bir tane) -----------------------------
-  const tarifeler = await Promise.all(
-    varsayilanTarifeler.map((t) =>
-      prisma.tarife.create({
+    for (const t of varsayilanTarifeler) {
+      await tx.tarife.create({
         data: {
           ad: t.ad,
           aracSinifi: t.aracSinifi,
@@ -114,287 +69,33 @@ async function main() {
           gunlukTavanUcret: t.gunlukTavanUcret,
           aktif: true,
         },
-      }),
-    ),
-  );
-  // Örnek park kayıtları binek tarifesinden ücretlendirilir.
-  const tarife = tarifeler[0];
+      });
+    }
+
+    await tx.kullanici.create({
+      data: {
+        adSoyad: "Yönetici",
+        email,
+        sifreHash: await bcrypt.hash(sifre, 12),
+        rol: "ADMIN",
+      },
+    });
+  });
+
+  console.log(`✓ Ayarlar (kapasite: ${otoparkBilgisi.toplamKapasite})`);
   for (const t of varsayilanTarifeler) {
     console.log(
-      `✓ Tarife (${t.aracSinifi}): ${t.ad} — ilk ${t.ilkUcretsizDakika} dk ücretsiz, ` +
-        `ilk saat ${t.ilkSaatUcreti} TL, sonraki her saat +${t.saatlikUcret} TL` +
-        (t.gunlukTavanUcret > 0
-          ? `, günlük tavan ${t.gunlukTavanUcret} TL`
-          : ", üst sınır yok (saf saatlik)"),
+      `✓ Tarife (${t.aracSinifi}): ilk ${t.ilkUcretsizDakika} dk ücretsiz, ` +
+        `ilk saat ${t.ilkSaatUcreti} TL, sonraki her saat +${t.saatlikUcret} TL`,
     );
   }
-
-  // Park alanı (blok) kullanılmıyor — otopark tek alan olarak işletiliyor.
-
-  // --- Kullanıcılar --------------------------------------------------------
-  const adminSifre = process.env[kullanicilar.admin.sifreEnv] ?? kullanicilar.admin.varsayilanSifre;
-  const gorevliSifre =
-    process.env[kullanicilar.gorevli.sifreEnv] ?? kullanicilar.gorevli.varsayilanSifre;
-
-  const admin = await prisma.kullanici.create({
-    data: {
-      adSoyad: kullanicilar.admin.adSoyad,
-      email: kullanicilar.admin.email,
-      sifreHash: await bcrypt.hash(adminSifre, 12),
-      rol: "ADMIN",
-    },
-  });
-
-  const gorevli = await prisma.kullanici.create({
-    data: {
-      adSoyad: kullanicilar.gorevli.adSoyad,
-      email: kullanicilar.gorevli.email,
-      sifreHash: await bcrypt.hash(gorevliSifre, 12),
-      rol: "GOREVLI",
-    },
-  });
-  console.log(`✓ 2 kullanıcı: ${admin.email} (ADMIN), ${gorevli.email} (GOREVLI)`);
-
-  // --- Araçlar -------------------------------------------------------------
-  const kullanilanPlakalar = new Set<string>();
-  const aracSayisi = ornekParkKaydiSayisi + 6; // bazı araçlar birden fazla kez gelsin
-
-  const araclar = [];
-  for (let i = 0; i < aracSayisi; i++) {
-    const secim = rastgeleSec(MARKALAR);
-    araclar.push(
-      await prisma.arac.create({
-        data: {
-          plaka: plakaUret(kullanilanPlakalar),
-          marka: secim.ad,
-          model: rastgeleSec(secim.modeller),
-          renk: rastgeleSec(RENKLER),
-        },
-      }),
-    );
-  }
-  console.log(`✓ ${araclar.length} araç`);
-
-  const simdi = new Date();
-
-  // --- Abonmanlar ---------------------------------------------------------
-  // Otopark saatlik çalışıyor; abonman ekranları kapalı olduğu için örnek
-  // abonman üretilmiyor. Veri modeli duruyor (bkz. src/app/(app)/_abonman-kapali).
-  const abonmanlar: { id: string; aracId: string; bitisTarihi: Date }[] = [];
-
-  // --- Vardiyalar ----------------------------------------------------------
-  // Son 6 gün için kapanmış vardiyalar. Açık vardiya bırakılmaz; kullanıcı
-  // uygulamaya girince kendi vardiyasını açar.
-  const vardiyalar = [];
-  for (let gun = 6; gun >= 1; gun--) {
-    const baslangic = new Date(simdi.getTime() - gunler(gun) - dakikalar(rastgeleTamsayi(0, 120)));
-    const bitis = new Date(baslangic.getTime() + dakikalar(rastgeleTamsayi(480, 600)));
-    vardiyalar.push(
-      await prisma.vardiya.create({
-        data: {
-          kullaniciId: gun % 2 === 0 ? gorevli.id : admin.id,
-          baslangic,
-          bitis,
-          acilisKasa: 500,
-          notlar: null,
-        },
-      }),
-    );
-  }
-  console.log(`✓ ${vardiyalar.length} kapanmış vardiya`);
-
-  // --- Park kayıtları ------------------------------------------------------
-  const ucretTarifesi = {
-    ilkUcretsizDakika: varsayilanTarife.ilkUcretsizDakika,
-    ilkSaatUcreti: varsayilanTarife.ilkSaatUcreti,
-    saatlikUcret: varsayilanTarife.saatlikUcret,
-    gunlukTavanUcret: varsayilanTarife.gunlukTavanUcret,
-  };
-
-  let cikan = 0;
-  let iceride = 0;
-  let iptal = 0;
-
-  for (let i = 0; i < ornekParkKaydiSayisi; i++) {
-    const arac = araclar[i];
-    const abonman = abonmanlar.find((a) => a.aracId === arac.id);
-    const vardiya = rastgeleSec(vardiyalar);
-
-    // Kayıtların dağılımı: 6 içeride, 2 iptal, kalanı çıkmış
-    const durum: "ICERIDE" | "CIKTI" | "IPTAL" =
-      i < 6 ? "ICERIDE" : i < 8 ? "IPTAL" : "CIKTI";
-
-    const girisZamani =
-      durum === "ICERIDE"
-        ? // İçeridekilerden biri 24 saati aşsın ki liste işaretlemesi görünsün
-          new Date(simdi.getTime() - (i === 0 ? dakikalar(1830) : dakikalar(rastgeleTamsayi(20, 700))))
-        : new Date(simdi.getTime() - gunler(rastgeleTamsayi(1, 6)) - dakikalar(rastgeleTamsayi(0, 600)));
-
-    const tarifeTuru = "SAATLIK" as const;
-
-    const veri: Prisma.ParkKaydiUncheckedCreateInput = {
-      aracId: arac.id,
-      plaka: arac.plaka,
-      girisZamani,
-      girisYapanId: rastgele() < 0.5 ? gorevli.id : admin.id,
-      tarifeId: tarife.id,
-      tarifeTuru,
-      durum,
-      abonmanId: abonman?.id ?? null,
-      vardiyaId: vardiya.id,
-    };
-
-    if (durum === "CIKTI") {
-      const parkDakikasi = rastgeleTamsayi(20, 1900);
-      const cikisZamani = new Date(girisZamani.getTime() + dakikalar(parkDakikasi));
-      const abonmanGecerli = abonman ? abonman.bitisTarihi > cikisZamani : false;
-
-      const sonuc = hesaplaUcret({
-        girisZamani,
-        cikisZamani,
-        tarife: ucretTarifesi,
-        tarifeTuru,
-        abonmanGecerli,
-      });
-
-      veri.cikisZamani = cikisZamani;
-      veri.cikisYapanId = rastgele() < 0.5 ? gorevli.id : admin.id;
-      veri.cikisVardiyaId = vardiya.id;
-      veri.hesaplananUcret = sonuc.ucret;
-      veri.tahsilEdilenUcret = sonuc.ucret;
-      veri.tarifeTuru = sonuc.uygulananTarifeTuru;
-      veri.odemeYontemi = sonuc.ucret === 0 ? null : rastgele() < 0.65 ? "NAKIT" : "KART";
-      cikan++;
-    } else if (durum === "IPTAL") {
-      veri.iptalSebebi = rastgeleSec([
-        "Yanlış plaka girildi, kayıt tekrar oluşturuldu.",
-        "Müşteri araç park etmeden ayrıldı.",
-      ]);
-      veri.iptalEdenId = admin.id;
-      veri.iptalZamani = new Date(girisZamani.getTime() + dakikalar(rastgeleTamsayi(2, 20)));
-      iptal++;
-    } else {
-      iceride++;
-    }
-
-    const kayit = await prisma.parkKaydi.create({ data: veri });
-
-    // İşlem günlüğü — gerçekçi denetim izi
-    await prisma.islemGunlugu.create({
-      data: {
-        kullaniciId: veri.girisYapanId,
-        zaman: girisZamani,
-        islemTipi: "GIRIS",
-        ilgiliKayitId: kayit.id,
-        aciklama: `${arac.plaka} girişi`,
-      },
-    });
-
-    if (durum === "CIKTI") {
-      await prisma.islemGunlugu.create({
-        data: {
-          kullaniciId: veri.cikisYapanId as string,
-          zaman: veri.cikisZamani as Date,
-          islemTipi: "CIKIS",
-          ilgiliKayitId: kayit.id,
-          aciklama: `${arac.plaka} çıkışı — ${veri.tahsilEdilenUcret} TL`,
-        },
-      });
-    } else if (durum === "IPTAL") {
-      await prisma.islemGunlugu.create({
-        data: {
-          kullaniciId: admin.id,
-          zaman: veri.iptalZamani as Date,
-          islemTipi: "IPTAL",
-          ilgiliKayitId: kayit.id,
-          aciklama: veri.iptalSebebi as string,
-        },
-      });
-    }
-  }
-
-  console.log(
-    `✓ ${ornekParkKaydiSayisi} park kaydı (${cikan} çıkmış, ${iceride} içeride, ${iptal} iptal)`,
-  );
-
-  // --- Vardiya kasa özetlerini gerçek tahsilatlardan hesapla ---------------
-  for (const vardiya of vardiyalar) {
-    const tahsilatlar = await prisma.parkKaydi.groupBy({
-      by: ["odemeYontemi"],
-      where: { cikisVardiyaId: vardiya.id, durum: "CIKTI" },
-      _sum: { tahsilEdilenUcret: true },
-    });
-
-    const topla = (yontem: "NAKIT" | "KART") =>
-      Number(tahsilatlar.find((t) => t.odemeYontemi === yontem)?._sum.tahsilEdilenUcret ?? 0);
-
-    const toplamNakit = topla("NAKIT");
-    const toplamKart = topla("KART");
-    const acilis = Number(vardiya.acilisKasa);
-    // Gerçekçi olsun diye bazı vardiyalarda küçük kasa farkı bırakılır.
-    const fark = rastgele() < 0.3 ? rastgeleTamsayi(-20, 20) : 0;
-
-    await prisma.vardiya.update({
-      where: { id: vardiya.id },
-      data: {
-        toplamNakit,
-        toplamKart,
-        kapanisKasa: acilis + toplamNakit + fark,
-        fark,
-      },
-    });
-
-    await prisma.islemGunlugu.create({
-      data: {
-        kullaniciId: vardiya.kullaniciId,
-        zaman: vardiya.bitis as Date,
-        islemTipi: "VARDIYA_KAPANIS",
-        ilgiliKayitId: vardiya.id,
-        aciklama: `Vardiya kapatıldı — nakit ${toplamNakit} TL, kart ${toplamKart} TL, fark ${fark} TL`,
-      },
-    });
-  }
-  console.log("✓ Vardiya kasa özetleri hesaplandı");
-
-  // --- Giderler -----------------------------------------------------------
-  // Gerçekçi gün sonu tablosu için her vardiyaya birkaç gider.
-  const GIDER_ORNEKLERI = [
-    { kategori: "YEMEK" as const, aciklama: "Öğle yemeği", enAz: 150, enCok: 400 },
-    { kategori: "CAY" as const, aciklama: "Çaycıya verilen", enAz: 50, enCok: 150 },
-    { kategori: "TEMIZLIK" as const, aciklama: "Temizlik malzemesi", enAz: 80, enCok: 250 },
-    { kategori: "KIRTASIYE" as const, aciklama: "Fiş rulosu", enAz: 60, enCok: 180 },
-  ];
-
-  let giderSayisi = 0;
-  for (const vardiya of vardiyalar) {
-    const adet = rastgeleTamsayi(1, 3);
-    for (let i = 0; i < adet; i++) {
-      const ornek = rastgeleSec(GIDER_ORNEKLERI);
-      await prisma.gider.create({
-        data: {
-          vardiyaId: vardiya.id,
-          kullaniciId: vardiya.kullaniciId,
-          kategori: ornek.kategori,
-          tutar: rastgeleTamsayi(ornek.enAz, ornek.enCok),
-          aciklama: ornek.aciklama,
-          odemeYontemi: rastgele() < 0.8 ? "NAKIT" : "KART",
-          zaman: new Date(vardiya.baslangic.getTime() + dakikalar(rastgeleTamsayi(30, 400))),
-        },
-      });
-      giderSayisi++;
-    }
-  }
-  console.log(`✓ ${giderSayisi} gider kaydı`);
-
-  console.log("\nSeed tamamlandı.\n");
-  console.log("Giriş bilgileri:");
-  console.log(`  ADMIN   → ${admin.email}  /  ${adminSifre}`);
-  console.log(`  GOREVLI → ${gorevli.email}  /  ${gorevliSifre}\n`);
+  // Şifre ekrana yazılmaz: terminal geçmişine ve kurulum loglarına düşmesin.
+  console.log(`✓ Yönetici: ${email}`);
 }
 
 main()
   .catch((hata) => {
-    console.error("Seed başarısız:", hata);
+    console.error("Seed başarısız:", hata instanceof Error ? hata.message : hata);
     process.exit(1);
   })
   .finally(async () => {

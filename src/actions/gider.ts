@@ -127,27 +127,3 @@ export async function giderSil(
   revalidatePath("/raporlar");
   return { basarili: true };
 }
-
-/** Bir vardiyanın gider toplamları. */
-export async function vardiyaGiderleri(vardiyaId: string) {
-  const [gruplar, kayitlar] = await Promise.all([
-    prisma.gider.groupBy({
-      by: ["odemeYontemi"],
-      where: { vardiyaId },
-      _sum: { tutar: true },
-    }),
-    prisma.gider.findMany({
-      where: { vardiyaId },
-      include: { kullanici: { select: { adSoyad: true } } },
-      orderBy: { zaman: "desc" },
-    }),
-  ]);
-
-  const topla = (yontem: "NAKIT" | "KART") =>
-    sayiyaCevir(gruplar.find((g) => g.odemeYontemi === yontem)?._sum.tutar);
-
-  const nakit = topla("NAKIT");
-  const kart = topla("KART");
-
-  return { nakitGider: nakit, kartGider: kart, toplamGider: nakit + kart, kayitlar };
-}

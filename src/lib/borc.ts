@@ -35,7 +35,7 @@ export type AcikBorc = {
  *
  * Plakasız kayıtlarda `aracId` boştur: o kayıtta doğan borç sonradan bir
  * araçla eşleştirilemez, bu yüzden burada da görünmez. Çıkış ekranı bu
- * durumda görevliyi uyarır.
+ * durumda görevliyi uyarır. 
  */
 export async function acikBorclariAl(aracId: string): Promise<AcikBorc[]> {
   const kayitlar = await prisma.parkKaydi.findMany({

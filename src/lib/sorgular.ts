@@ -192,3 +192,40 @@ export async function bitenAbonmanlariAl(gunEsigi = 7) {
     kalanGun: kalanGun(abonman.bitisTarihi, simdi),
   }));
 }
+
+/**
+ * Süresi geçmiş AKTIF abonmanları SURESI_DOLDU'ya çeker.
+ * Abonman listesi açıldığında çağrılır — ayrı bir zamanlanmış göreve
+ * ihtiyaç kalmasın diye.
+ */
+export async function suresiDolanlariIsaretle(): Promise<number> {
+  const sonuc = await prisma.abonman.updateMany({
+    where: { durum: "AKTIF", bitisTarihi: { lt: new Date() } },
+    data: { durum: "SURESI_DOLDU" },
+  });
+  return sonuc.count;
+}
+
+/** Bir vardiyanın gider toplamları. */
+export async function vardiyaGiderleri(vardiyaId: string) {
+  const [gruplar, kayitlar] = await Promise.all([
+    prisma.gider.groupBy({
+      by: ["odemeYontemi"],
+      where: { vardiyaId },
+      _sum: { tutar: true },
+    }),
+    prisma.gider.findMany({
+      where: { vardiyaId },
+      include: { kullanici: { select: { adSoyad: true } } },
+      orderBy: { zaman: "desc" },
+    }),
+  ]);
+
+  const topla = (yontem: "NAKIT" | "KART") =>
+    sayiyaCevir(gruplar.find((g) => g.odemeYontemi === yontem)?._sum.tutar);
+
+  const nakit = topla("NAKIT");
+  const kart = topla("KART");
+
+  return { nakitGider: nakit, kartGider: kart, toplamGider: nakit + kart, kayitlar };
+}

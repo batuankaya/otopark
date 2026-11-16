@@ -154,7 +154,7 @@ export async function temelVeriyiKur(
  */
 export function oturumAc(kullaniciId: string): void {
   globalThis.__testOturumu = {
-    user: { id: kullaniciId, acilis: Math.floor(Date.now() / 1000) },
+    user: { id: kullaniciId, acilis: Date.now() },
   };
 }
 

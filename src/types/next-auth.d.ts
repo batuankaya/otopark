@@ -7,7 +7,7 @@ declare module "next-auth" {
       id: string;
       rol: "ADMIN" | "GOREVLI";
       adSoyad: string;
-      /** Oturumun açıldığı an (Unix saniye). */
+      /** Oturumun açıldığı an (Unix milisaniye). */
       acilis?: number;
     } & DefaultSession["user"];
   }
@@ -23,7 +23,7 @@ declare module "next-auth/jwt" {
     id?: string;
     rol?: "ADMIN" | "GOREVLI";
     adSoyad?: string;
-    /** Oturumun açıldığı an (Unix saniye) — şifre değişimi kontrolü için. */
+    /** Oturumun açıldığı an (Unix milisaniye) — şifre değişimi kontrolü için. */
     acilis?: number;
   }
 }

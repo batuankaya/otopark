@@ -132,9 +132,12 @@ const YAYGIN_SIFRELER = [
   "11111111",
   "asdasdasd",
   "123123123",
+  // Eski seed varsayılanları: herkese açık depo geçmişinde yazılı duruyorlar.
+  "otopark2026admin",
+  "otopark2026gorevli",
 ];
 
-const sifreAlani = z
+export const sifreAlani = z
   .string()
   .min(10, "Şifre en az 10 karakter olmalıdır.")
   .max(72, "Şifre en fazla 72 karakter olabilir.")

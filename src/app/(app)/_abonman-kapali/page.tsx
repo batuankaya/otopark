@@ -21,12 +21,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { suresiDolanlariIsaretle } from "@/actions/abonman";
 import { AbonmanFormu } from "@/components/abonman-formu";
 import { PlakaGoster } from "@/components/plaka-goster";
 import { formatlaPara } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
-import { aktifTarifeyiAl } from "@/lib/sorgular";
+import { aktifTarifeyiAl, suresiDolanlariIsaretle } from "@/lib/sorgular";
 import { turkceKarsilastir } from "@/lib/siralama";
 import { formatlaTarih, kalanGun } from "@/lib/tarih";
 import { oturumZorunlu } from "@/lib/yetki";

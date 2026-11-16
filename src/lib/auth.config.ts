@@ -80,7 +80,10 @@ export const authConfig = {
         // Oturumun açıldığı an: şifre bu tarihten SONRA değiştiyse oturum
         // geçersiz sayılır (bkz. lib/yetki.ts). Şifre çalındığı için
         // değiştirildiyse saldırganın açık oturumu da düşsün diye.
-        token.acilis = Math.floor(Date.now() / 1000);
+        // Milisaniye: şifre değişimi de milisaniyeyle saklanır. Saniyeye
+        // yuvarlanırsa, şifre değiştiği saniye içinde giriş yapanın oturumu
+        // "değişimden önce açılmış" sayılıp hemen düşer.
+        token.acilis = Date.now();
       }
       return token;
     },

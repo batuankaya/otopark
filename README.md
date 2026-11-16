@@ -33,18 +33,19 @@ npm install
 # 2) Ortam değişkenleri
 cp .env.example .env
 npx auth secret          # AUTH_SECRET üretir (veya: openssl rand -base64 32)
+# .env içinde SEED_ADMIN_EMAIL ve SEED_ADMIN_SIFRE değerlerini kendin belirle
 
 # 3) Veritabanı (Docker ile — en kolayı)
 docker compose up -d
 
-# 4) Şema + örnek veri
+# 4) Şema + ilk kurulum (ayarlar, tarifeler, yönetici hesabı)
 npm run kurulum          # prisma generate + migrate deploy + seed
 
 # 5) Çalıştır
 npm run dev
 ```
 
-Tarayıcıda <http://localhost:3000> → `admin@otopark.local` / `Otopark2026Admin`
+Tarayıcıda <http://localhost:3000> → `.env`e yazdığın yönetici e-postası ve şifresiyle giriş yap.
 
 ---
 
@@ -59,11 +60,10 @@ Tarayıcıda <http://localhost:3000> → `admin@otopark.local` / `Otopark2026Adm
 | `AUTH_URL` | — | Uygulamanın adresi (üretimde gerçek alan adı) |
 | `AUTH_TRUST_HOST` | — | Ters proxy arkasında `true` olmalı |
 | `TZ` | — | `Europe/Istanbul` |
-| `SEED_ADMIN_SIFRE` | — | Seed'in oluşturacağı yönetici şifresi |
-| `SEED_GOREVLI_SIFRE` | — | Seed'in oluşturacağı görevli şifresi |
+| `SEED_ADMIN_EMAIL` | ✅ (seed) | Seed'in oluşturacağı yönetici hesabının e-postası |
+| `SEED_ADMIN_SIFRE` | ✅ (seed) | Yönetici şifresi — uygulamanın şifre kurallarına uymalı |
 
-> **Üretimde:** `AUTH_SECRET`'i mutlaka değiştirin ve seed hesaplarının şifrelerini
-> Ayarlar → Kullanıcılar bölümünden güncelleyin.
+> **Üretimde:** `AUTH_SECRET`'i mutlaka yeniden üretin.
 
 ---
 
@@ -97,19 +97,15 @@ DATABASE_URL="postgresql://postgres:SIFRE@localhost:5432/otopark_dev?schema=publ
 
 ## Giriş bilgileri
 
-Seed iki hesap oluşturur:
+Depoda hiçbir kimlik bilgisi yoktur. Seed tek bir yönetici hesabı oluşturur; e-postası
+ve şifresi `.env`deki `SEED_ADMIN_EMAIL` ve `SEED_ADMIN_SIFRE`den okunur. İkisi de
+zorunludur ve şifre uygulamanın şifre kurallarından geçmezse seed çalışmaz. Şifre
+ekrana ya da loglara yazılmaz.
 
-| Rol | E-posta | Şifre |
-|---|---|---|
-| ADMIN | `admin@otopark.local` | `Otopark2026Admin` |
-| GOREVLI | `gorevli@otopark.local` | `Otopark2026Gorevli` |
+Görevli hesapları kurulumdan sonra **Ayarlar → Kullanıcılar**'dan açılır.
 
-> ⚠️ **Bu şifreler herkese açık olarak belgelenmiştir.** Kurulumdan hemen sonra
-> **Ayarlar → Kullanıcılar**'dan değiştirin. Sistemi yerel ağ dışına açacaksanız
-> değiştirmeden açmayın — bu depoyu okuyan herkes varsayılanları bilir.
-
-Seed ayrıca 1 tarife, 6 kapanmış vardiya ve **30 örnek park kaydı**
-(22 çıkmış, 6 içeride, 2 iptal) üretir.
+Seed yalnızca **boş veritabanında** çalışır ve hiçbir şey silmez: canlı sistemde
+yanlışlıkla çalıştırılırsa hata verip durur. Örnek park kaydı üretmez.
 
 ---
 
@@ -125,7 +121,7 @@ Seed ayrıca 1 tarife, 6 kapanmış vardiya ve **30 örnek park kaydı**
 | `npm run test:izle` | Testleri izleme modunda çalıştırır |
 | `npm run kurulum` | generate + migrate deploy + seed |
 | `npm run db:migrate` | Yeni migration oluşturur |
-| `npm run db:reset` | Veritabanını sıfırlar ve seed'i çalıştırır |
+| `npm run db:reset` | **Tüm veriyi siler**, seed'i yeniden çalıştırır (yalnızca geliştirmede) |
 | `npm run db:studio` | Prisma Studio (veri görüntüleyici) |
 | `npm run lint` | ESLint |
 
@@ -388,7 +384,7 @@ Görevli aracı kaydetmeyi unutursa giriş saatini elle girebilir:
 prisma/
   schema.prisma            Veri modeli
   migrations/              İlk kurulum + kısmi unique index'ler
-  seed.ts                  Örnek veri
+  seed.ts                  İlk kurulum (ayarlar, tarifeler, yönetici)
   seed-config.ts           ⚠️ TARİFE / KAPASİTE DEĞERLERİ BURADA
 src/
   app/
@@ -480,6 +476,20 @@ atlatma test edildi ve düzeltildi.
 
 Kilit **son denemeden** itibaren sayılır (saldırgan bekleyip devam edemez) ama zaman
 aşımına uğrar — sahadaki görevli kendini kalıcı olarak sistem dışında bırakmasın diye.
+
+**Hesap varlığı sızmaz.** Kayıtlı ve kayıtsız e-posta aynı mesajı alır ve aynı sürede
+cevaplanır: kayıtsız e-postada da gerçek bir bcrypt özeti karşılaştırılır
+(`SAHTE_SIFRE_OZETI`). Pasif hesap için ayrı mesaj verilmez.
+
+**IP adresi** `X-Forwarded-For`un **son** değerinden okunur — onu önündeki proxy
+(Caddy) yazar; öndeki değerleri istemci uydurabilir. Bu yüzden uygulamanın portu
+dışarıya açılmamalı, istekler yalnızca proxy üzerinden gelmelidir.
+Tek proxy varsayılır: önüne bir CDN daha eklenirse herkes aynı IP'den gelir ve IP
+sınırı herkesi birlikte kilitler.
+
+**Bilinen sınır:** Hesap kilidi yanlış şifre denemelerine göre çalıştığı için, yönetici
+e-postasını bilen biri 15 dakikada bir 8 deneme yaparak gerçek yöneticiyi de dışarıda
+tutabilir. Tanınan cihazı kilitten muaf tutan çözüm sonraki adım olarak planlandı.
 
 **Pasifleştirilen kullanıcı anında düşer:** oturum her istekte veritabanından doğrulanır,
 JWT'ye güvenilmez. Rol değişikliği ve şifre değişimi de anında yürürlüğe girer —
@@ -599,8 +609,8 @@ Plist iki tuzağı kapatır:
 
 **Tarife ve kapasite `prisma/seed-config.ts` dosyasından geliyor:** kapasite 150,
 ilk 15 dk ücretsiz, ilk saat 100 TL, sonraki her saat +50 TL, günlük tavan 0 (sınırsız).
-Değiştirmek için **Ayarlar** ekranını kullanın ya da bu dosyayı düzenleyip
-`npm run db:reset` çalıştırın.
+Kurulumdan sonra değiştirmek için **Ayarlar** ekranını kullanın. Dosya yalnızca
+ilk kurulumda okunur; seed dolu veritabanında çalışmayı reddeder.
 
 **Park alanı (blok) kullanılmıyor.** Otopark tek alan olarak işletiliyor; giriş ekranında
 blok seçimi, listelerde blok filtresi ve Ayarlar'da blok yönetimi yok. `ParkAlani` tablosu

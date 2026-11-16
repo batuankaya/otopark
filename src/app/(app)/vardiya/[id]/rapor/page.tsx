@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 
-import { vardiyaGiderleri } from "@/actions/gider";
+import { vardiyaGiderleri } from "@/lib/sorgular";
 import { GIDER_ETIKETLERI } from "@/lib/gider";
 import { FisYazdirButonlari } from "@/components/fis-yazdir-butonlari";
 import { PlakaGoster } from "@/components/plaka-goster";

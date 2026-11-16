@@ -51,24 +51,3 @@ export const varsayilanTarifeler = [
     gunlukTavanUcret: 0,
   },
 ] as const;
-
-/** Örnek park kayıtlarının ücretlendirildiği tarife. */
-export const varsayilanTarife = varsayilanTarifeler[0];
-
-export const kullanicilar = {
-  admin: {
-    adSoyad: "Sistem Yöneticisi",
-    email: "admin@otopark.local",
-    sifreEnv: "SEED_ADMIN_SIFRE",
-    varsayilanSifre: "Otopark2026Admin",
-  },
-  gorevli: {
-    adSoyad: "Ahmet Görevli",
-    email: "gorevli@otopark.local",
-    sifreEnv: "SEED_GOREVLI_SIFRE",
-    varsayilanSifre: "Otopark2026Gorevli",
-  },
-};
-
-/** Seed'in üreteceği örnek park kaydı sayısı. */
-export const ornekParkKaydiSayisi = 30;

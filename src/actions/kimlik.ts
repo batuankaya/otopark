@@ -74,7 +74,7 @@ export async function girisYap(
       // Deneme sayacı authorize callback'inde artırıldı; burada yalnızca
       // denetim günlüğü yazılır.
       const kullanici = await prisma.kullanici
-        .findUnique({ where: { email }, select: { id: true, aktif: true } })
+        .findUnique({ where: { email }, select: { id: true } })
         .catch(() => null);
 
       await islemGunluguYaz({
@@ -83,9 +83,8 @@ export async function girisYap(
         aciklama: `Başarısız giriş denemesi: ${email}${ip ? ` — ${ip}` : ""}`,
       });
 
-      if (kullanici && !kullanici.aktif) {
-        return { hata: "Hesabınız pasif durumda. Lütfen yöneticinizle görüşün." };
-      }
+      // Pasif hesap için ayrı mesaj verilmez: şifre doğrulanmadan verilen
+      // her farklı cevap, saldırgana hangi e-postanın kayıtlı olduğunu söyler.
       return { hata: "E-posta veya şifre hatalı." };
     }
 

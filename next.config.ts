@@ -53,6 +53,13 @@ const nextConfig: NextConfig = {
   /** Sunucu yanıtlarında Next.js sürümünü sızdırma. */
   poweredByHeader: false,
 
+  /**
+   * Görsel optimize edici (`/_next/image`) kapalı: uygulama `next/image`
+   * kullanmıyor, ama uç nokta varsayılan olarak oturum istemeden görsel
+   * işliyor. Kapalıyken 404 döner; kullanılmayan saldırı yüzeyi bırakılmaz.
+   */
+  images: { unoptimized: true },
+
   async headers() {
     return [
       {

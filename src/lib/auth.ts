@@ -9,6 +9,7 @@ import {
   denemeleriTemizle,
   girisIzniVarMi,
   ipAdresiniAl,
+  SAHTE_SIFRE_OZETI,
 } from "./giris-koruma";
 import { gelisiKaydet } from "./personel";
 import { prisma } from "./prisma";
@@ -58,7 +59,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // Kullanıcı yoksa da bcrypt çalıştırılır: cevap süresinden hesabın
         // var olup olmadığı anlaşılmasın (kullanıcı sayımı saldırısına karşı).
-        const hash = kullanici?.sifreHash ?? "$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidi";
+        const hash = kullanici?.sifreHash ?? SAHTE_SIFRE_OZETI;
         const sifreDogru = await bcrypt.compare(sifre, hash);
 
         if (!kullanici || !sifreDogru || !kullanici.aktif) {

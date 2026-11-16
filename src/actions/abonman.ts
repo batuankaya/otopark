@@ -177,16 +177,3 @@ export async function abonmanIptalEt(
   revalidatePath("/abonman");
   return { basarili: true };
 }
-
-/**
- * Süresi geçmiş AKTIF abonmanları SURESI_DOLDU'ya çeker.
- * Abonman listesi açıldığında çağrılır — ayrı bir zamanlanmış göreve
- * ihtiyaç kalmasın diye.
- */
-export async function suresiDolanlariIsaretle(): Promise<number> {
-  const sonuc = await prisma.abonman.updateMany({
-    where: { durum: "AKTIF", bitisTarihi: { lt: new Date() } },
-    data: { durum: "SURESI_DOLDU" },
-  });
-  return sonuc.count;
-}

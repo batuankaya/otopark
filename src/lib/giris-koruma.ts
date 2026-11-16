@@ -31,16 +31,31 @@ export type KorumaSonucu =
   | { engelli: false }
   | { engelli: true; kalanSaniye: number; sebep: "hesap" | "ip" };
 
-/** İstek başlıklarından istemci IP'sini çıkarır (ters proxy uyumlu). */
+/**
+ * Var olmayan hesap için karşılaştırılan sahte bcrypt özeti.
+ *
+ * Gerçek bir özet olmalı (60 karakter, cost 12): bcryptjs biçimi bozuk özeti
+ * hesaplama yapmadan anında reddeder. O zaman olmayan e-posta ~1 ms'de,
+ * var olan ~250 ms'de cevaplanır ve hesapların varlığı cevap süresinden
+ * anlaşılır. Rastgele bir şifrenin özetidir; hiçbir girdi eşleşmez.
+ */
+export const SAHTE_SIFRE_OZETI = "$2b$12$1vB.MKWdqo3vc2iD/oFYS.UhrL1ZK.2WLjmlptBq.xBg88KUsqzJO";
+
+/**
+ * İstek başlıklarından istemci IP'sini çıkarır.
+ *
+ * Uygulama üretimde tek bir ters proxy (Caddy) arkasında çalışır. Proxy,
+ * bağlanan istemcinin adresini `X-Forwarded-For`un SONUNA yazar; listenin
+ * önündeki değerler istemcinin kendi gönderdikleridir ve sahte olabilir.
+ * İlk değeri almak, saldırganın her denemede farklı bir IP uydurup IP
+ * kilidini atlatmasına izin veriyordu. Bu yüzden yalnızca son değere güvenilir.
+ *
+ * `x-real-ip` ve `cf-connecting-ip` okunmaz: proxy bunları yazmadığında
+ * istemci doğrudan gönderebilir.
+ */
 export function ipAdresiniAl(basliklar: Headers): string | null {
-  // Vercel/Cloudflare/nginx sırasıyla bu başlıkları kullanır.
-  const forwarded = basliklar.get("x-forwarded-for");
-  if (forwarded) {
-    // İlk değer gerçek istemcidir; sonrakiler proxy zinciri.
-    const ilk = forwarded.split(",")[0]?.trim();
-    if (ilk) return ilk;
-  }
-  return basliklar.get("x-real-ip") ?? basliklar.get("cf-connecting-ip") ?? null;
+  const son = basliklar.get("x-forwarded-for")?.split(",").at(-1)?.trim();
+  return son || null;
 }
 
 /**

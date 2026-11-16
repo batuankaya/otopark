@@ -56,7 +56,7 @@ async function dogrulanmisKullanici(): Promise<OturumKullanicisi | null> {
   // Şifre çalındığı için değiştirildiyse saldırganın açık oturumu da düşer;
   // aksi hâlde 12 saat daha çalışmaya devam ederdi.
   const acilis = oturum.user.acilis;
-  if (acilis && kullanici.sifreDegisimi.getTime() > acilis * 1000) return null;
+  if (acilis && kullanici.sifreDegisimi.getTime() > acilis) return null;
 
   // Günün ilk temasında mesai kaydı oluşturulur. Yalnızca giriş anında
   // yapmak yetmiyordu: oturum her istekte tazelendiği için çıkış yapmadan
