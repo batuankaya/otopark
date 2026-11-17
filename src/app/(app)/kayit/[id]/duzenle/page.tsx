@@ -19,7 +19,7 @@ export default async function KayitDuzenleSayfasi({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await oturumZorunlu();
+  const kullanici = await oturumZorunlu();
   const { id } = await params;
 
   const [kayit, tarifeler] = await Promise.all([
@@ -105,6 +105,7 @@ export default async function KayitDuzenleSayfasi({
               }]
             : [];
         })}
+        yonetici={kullanici.rol === "ADMIN"}
       />
     </div>
   );

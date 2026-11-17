@@ -9,6 +9,7 @@ import { beklemeMetni, girisIzniVarMi, ipAdresiniAl } from "@/lib/giris-koruma";
 import { islemGunluguYaz } from "@/lib/gunluk";
 import { prisma } from "@/lib/prisma";
 import { formVerisiniAl, girisSemasi, hatalariTopla } from "@/lib/validasyon";
+import { oturumAl } from "@/lib/yetki";
 
 export type GirisDurumu = {
   basarili?: boolean;
@@ -97,6 +98,20 @@ export async function girisYap(
   return { basarili: true };
 }
 
+/**
+ * Oturumu kapatır.
+ *
+ * Çerezi silmek yetmez: oturum JWT'dir ve kopyalanmış bir çerez 7 gün geçerli
+ * kalırdı. Sürüm artırılınca o çerez de geçersiz olur. Bedeli: kullanıcının
+ * diğer cihazlarındaki oturumlar da kapanır.
+ */
 export async function cikisYap(): Promise<void> {
+  const kullanici = await oturumAl();
+  if (kullanici) {
+    await prisma.kullanici.update({
+      where: { id: kullanici.id },
+      data: { oturumSurumu: { increment: 1 } },
+    });
+  }
   await signOut({ redirectTo: "/giris" });
 }

@@ -38,8 +38,10 @@ export const authConfig = {
   },
   session: {
     strategy: "jwt",
-    // Vardiya boyu düşünülerek 12 saat; her istekte tazelenir.
-    maxAge: 12 * 60 * 60,
+    // 7 gün; her istekte tazelenir. Görevliler her gün yeniden giriş yapmasın.
+    // Çıkış, şifre değişimi ve pasifleştirme oturum sürümünü artırıp açık
+    // oturumları anında düşürür (bkz. lib/yetki.ts).
+    maxAge: 7 * 24 * 60 * 60,
   },
   /**
    * Oturum çerezi.
@@ -77,13 +79,9 @@ export const authConfig = {
         token.id = user.id as string;
         token.rol = (user as { rol?: string }).rol ?? "GOREVLI";
         token.adSoyad = (user as { adSoyad?: string }).adSoyad ?? user.name ?? "";
-        // Oturumun açıldığı an: şifre bu tarihten SONRA değiştiyse oturum
-        // geçersiz sayılır (bkz. lib/yetki.ts). Şifre çalındığı için
-        // değiştirildiyse saldırganın açık oturumu da düşsün diye.
-        // Milisaniye: şifre değişimi de milisaniyeyle saklanır. Saniyeye
-        // yuvarlanırsa, şifre değiştiği saniye içinde giriş yapanın oturumu
-        // "değişimden önce açılmış" sayılıp hemen düşer.
-        token.acilis = Date.now();
+        // Sürüm veritabanındakinden farklılaşınca oturum geçersizdir
+        // (bkz. lib/yetki.ts).
+        token.surum = user.oturumSurumu ?? 0;
       }
       return token;
     },
@@ -92,7 +90,7 @@ export const authConfig = {
         session.user.id = (token.id as string) ?? "";
         session.user.rol = (token.rol as "ADMIN" | "GOREVLI") ?? "GOREVLI";
         session.user.adSoyad = (token.adSoyad as string) ?? "";
-        session.user.acilis = (token.acilis as number) ?? 0;
+        session.user.surum = (token.surum as number | undefined) ?? -1;
       }
       return session;
     },

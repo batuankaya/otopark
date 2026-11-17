@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ayarlariKaydet, kullaniciKaydet, parkAlaniKaydet, tarifeKaydet } from "@/actions/ayarlar";
 import { kaydiIptalEt } from "@/actions/park";
 import { gelisSaatiniDuzelt } from "@/actions/personel";
+import { cikisYap } from "@/actions/kimlik";
 
 import {
   BOS_DURUM,
@@ -46,13 +47,13 @@ describe("yönetici yetkisi", () => {
     });
 
     it("görevliye reddedilir", async () => {
-      oturumAc(veri.gorevli.id);
+      await oturumAc(veri.gorevli.id);
       expect(await islem()).toMatchObject({ hata: expect.stringMatching(/yönetici/i) });
     });
   });
 
   it("görevli kendini yönetici yapamaz", async () => {
-    oturumAc(veri.gorevli.id);
+    await oturumAc(veri.gorevli.id);
     const sonuc = await kullaniciKaydet(
       BOS_DURUM,
       form({
@@ -70,7 +71,7 @@ describe("yönetici yetkisi", () => {
   });
 
   it("görevli yeni yönetici hesabı açamaz", async () => {
-    oturumAc(veri.gorevli.id);
+    await oturumAc(veri.gorevli.id);
     const sonuc = await kullaniciKaydet(
       BOS_DURUM,
       form({ adSoyad: "Sızma Hesabı", email: "sizma@otopark.test", rol: "ADMIN", aktif: true, sifre: "GucluSifre2026x" }),
@@ -81,7 +82,7 @@ describe("yönetici yetkisi", () => {
   });
 
   it("yönetici aynı işlemi yapabilir (testin boşa geçmediğinin kanıtı)", async () => {
-    oturumAc(veri.yonetici.id);
+    await oturumAc(veri.yonetici.id);
     const sonuc = await kullaniciKaydet(
       BOS_DURUM,
       form({
@@ -99,39 +100,70 @@ describe("yönetici yetkisi", () => {
   });
 
   it("pasifleştirilen yöneticinin açık oturumu yetkisini kaybeder", async () => {
-    oturumAc(veri.yonetici.id);
+    await oturumAc(veri.yonetici.id);
     await prisma.kullanici.update({ where: { id: veri.yonetici.id }, data: { aktif: false } });
 
     expect(await ayarlariKaydet(BOS_DURUM, form({}))).toMatchObject({ hata: expect.stringMatching(/oturum/i) });
   });
 
-  it("şifresi değişen yöneticinin eski oturumu yetkisini kaybeder", async () => {
-    oturumAc(veri.yonetici.id);
-    await prisma.kullanici.update({
-      where: { id: veri.yonetici.id },
-      data: { sifreDegisimi: new Date(Date.now() + 60_000) },
-    });
+  it("şifresi değiştirilen kullanıcının eski oturumu düşer, yeni oturumu çalışır", async () => {
+    await oturumAc(veri.gorevli.id);
+    const eskiOturum = globalThis.__testOturumu;
 
-    expect(await ayarlariKaydet(BOS_DURUM, form({}))).toMatchObject({ hata: expect.stringMatching(/oturum/i) });
-  });
+    await oturumAc(veri.yonetici.id);
+    const sonuc = await kullaniciKaydet(
+      BOS_DURUM,
+      form({
+        kullaniciId: veri.gorevli.id,
+        adSoyad: veri.gorevli.adSoyad,
+        email: veri.gorevli.email,
+        rol: "GOREVLI",
+        aktif: "true",
+        sifre: "YeniSifre2026x",
+      }),
+    );
+    expect(sonuc).toMatchObject({ basarili: true });
 
-  it("şifre değiştikten hemen sonra (aynı saniye içinde) açılan oturum geçerlidir", async () => {
-    // Şifre değişimi milisaniye hassasiyetinde saklanır. Oturumun açılış anı
-    // saniyeye yuvarlanırsa, aynı saniyede giriş yapan kişinin oturumu
-    // "şifreden önce açılmış" sayılıp ölü doğar.
-    await prisma.kullanici.update({
-      where: { id: veri.yonetici.id },
-      data: { sifreDegisimi: new Date() },
-    });
-    oturumAc(veri.yonetici.id);
+    globalThis.__testOturumu = eskiOturum;
+    expect(await kaydiIptalEt(BOS_DURUM, form({}))).toMatchObject({ hata: expect.stringMatching(/oturum/i) });
 
-    expect(await ayarlariKaydet(BOS_DURUM, form({}))).not.toMatchObject({
+    await oturumAc(veri.gorevli.id);
+    expect(await kaydiIptalEt(BOS_DURUM, form({}))).not.toMatchObject({
       hata: expect.stringMatching(/oturum/i),
     });
   });
 
+  it("çıkış yapılan oturumun kopyası da geçersiz olur", async () => {
+    // Çerez çalınmış/kopyalanmış olsun: kullanıcı çıkış yapınca o kopya da düşmeli.
+    await oturumAc(veri.yonetici.id);
+    const kopya = globalThis.__testOturumu;
+
+    await cikisYap();
+
+    globalThis.__testOturumu = kopya;
+    expect(await ayarlariKaydet(BOS_DURUM, form({}))).toMatchObject({ hata: expect.stringMatching(/oturum/i) });
+  });
+
+  it("pasifleştirilip yeniden açılan hesabın eski oturumu geri canlanmaz", async () => {
+    await oturumAc(veri.gorevli.id);
+    const eskiOturum = globalThis.__testOturumu;
+
+    await oturumAc(veri.yonetici.id);
+    const temel = {
+      kullaniciId: veri.gorevli.id,
+      adSoyad: veri.gorevli.adSoyad,
+      email: veri.gorevli.email,
+      rol: "GOREVLI",
+    };
+    await kullaniciKaydet(BOS_DURUM, form({ ...temel }));
+    await kullaniciKaydet(BOS_DURUM, form({ ...temel, aktif: "true" }));
+
+    globalThis.__testOturumu = eskiOturum;
+    expect(await kaydiIptalEt(BOS_DURUM, form({}))).toMatchObject({ hata: expect.stringMatching(/oturum/i) });
+  });
+
   it("yetkisi düşürülen yönetici, oturumu açık olsa da yönetici işlemi yapamaz", async () => {
-    oturumAc(veri.yonetici.id);
+    await oturumAc(veri.yonetici.id);
     await prisma.kullanici.update({ where: { id: veri.yonetici.id }, data: { rol: "GOREVLI" } });
 
     expect(await ayarlariKaydet(BOS_DURUM, form({}))).toMatchObject({ hata: expect.stringMatching(/yönetici/i) });

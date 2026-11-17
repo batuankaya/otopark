@@ -40,7 +40,7 @@ describe("vardiya ve kasa", () => {
     saatiAyarla("09:00");
     await veritabaniniTemizle();
     temel = await temelVeriyiKur();
-    oturumAc(temel.gorevli.id);
+    await oturumAc(temel.gorevli.id);
   });
 
   afterEach(() => zamaniSerbestBirak());
@@ -61,7 +61,7 @@ describe("vardiya ve kasa", () => {
     it("başka görevlinin açtığı vardiya adıyla bildirilir", async () => {
       await vardiyaAcVeHizala("500");
 
-      oturumAc(temel.gorevliIki.id);
+      await oturumAc(temel.gorevliIki.id);
       const ikinci = await vardiyaAc(BOS_DURUM, form({ acilisKasa: "300" }));
       expect(ikinci.hata).toContain("Mehmet Görevli");
     });
@@ -170,7 +170,7 @@ describe("vardiya ve kasa", () => {
       // Vardiya ortak kasadır; açan kişi izinde olabilir.
       const vardiyaId = await vardiyaAcVeHizala("500");
 
-      oturumAc(temel.gorevliIki.id);
+      await oturumAc(temel.gorevliIki.id);
       const sonuc = await vardiyaKapat(BOS_DURUM, form({ vardiyaId, kapanisKasa: "500" }));
       expect(sonuc.basarili).toBe(true);
 

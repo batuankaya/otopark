@@ -46,7 +46,7 @@ describe("entegrasyon altyapısı", () => {
 
   it("oturum taklidi gerçek yetki doğrulamasından geçer", async () => {
     const temel = await temelVeriyiKur();
-    oturumAc(temel.gorevli.id);
+    await oturumAc(temel.gorevli.id);
 
     const sonuc = await vardiyaAc(BOS_DURUM, form({ acilisKasa: "500" }));
 

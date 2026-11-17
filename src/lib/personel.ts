@@ -15,7 +15,7 @@ import { gunBaslangici } from "./tarih";
 /**
  * Bugün kaydı yazılmış kullanıcılar — gereksiz veritabanı yazımını önler.
  *
- * Kayıt yalnızca giriş anında oluşturulmak yetmiyor: oturum 12 saatlik ve her
+ * Kayıt yalnızca giriş anında oluşturulmak yetmiyor: oturum 7 günlük ve her
  * istekte tazeleniyor, yani çıkış yapmadan çalışmaya devam eden biri ikinci
  * gün hiç giriş yapmaz ve o günün geliş kaydı oluşmaz. Bu yüzden kayıt her
  * kimlik doğrulamasında denenir.

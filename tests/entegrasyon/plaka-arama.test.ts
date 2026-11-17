@@ -95,7 +95,7 @@ describe("plaka arama uç noktası", () => {
       data: { kullaniciId: temel.gorevli.id, acilisKasa: 0 },
     });
     vardiyaId = vardiya.id;
-    oturumAc(temel.gorevli.id);
+    await oturumAc(temel.gorevli.id);
   });
 
   afterEach(() => zamaniSerbestBirak());

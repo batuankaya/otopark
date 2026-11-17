@@ -48,15 +48,18 @@ function KaydetButonu() {
  * İçerideki bir kaydı düzenleme formu.
  *
  * Plakasız kayda plaka eklemek, yanlış girilen giriş saatini düzeltmek ve
- * araç bilgisi/not güncellemek için kullanılır. Giriş saati ücreti doğrudan
- * etkilediği için değişiklik işlem günlüğüne yazılır.
+ * araç bilgisi/not güncellemek için kullanılır. Giriş saati ve araç sınıfı
+ * ücreti doğrudan belirlediği için yalnızca yönetici değiştirebilir; görevli
+ * bunları salt okunur görür.
  */
 export function KayitDuzenleFormu({
   kayit,
   sinifSecenekleri,
+  yonetici,
 }: {
   kayit: DuzenlenecekKayit;
   sinifSecenekleri: SinifSecenegi[];
+  yonetici: boolean;
 }) {
   const router = useRouter();
   const [durum, islem] = useActionState<IslemDurumu, FormData>(kaydiDuzenle, {});
@@ -89,7 +92,9 @@ export function KayitDuzenleFormu({
       <input type="hidden" name="model" value={model} />
       <input type="hidden" name="renk" value={renk} />
       <input type="hidden" name="aracSinifi" value={aracSinifi} />
-      <input type="hidden" name="girisSaati" value={girisSaati} />
+      {/* Yalnızca değiştiyse gönderilir: saat "bugünün saati" olarak yorumlanır,
+          dünden kalan aracın saati olduğu gibi gönderilse giriş bir gün kayardı. */}
+      {saatDegisti && <input type="hidden" name="girisSaati" value={girisSaati} />}
       <input type="hidden" name="notlar" value={notlar} />
 
       {durum.hata && (
@@ -154,14 +159,22 @@ export function KayitDuzenleFormu({
 
       <section className="space-y-3 rounded-xl border border-neutral-300 bg-white p-4">
         <h2 className="text-lg font-bold text-neutral-900">Giriş saati</h2>
-        <SaatInput
+        {!yonetici && (
+          <p className="text-base text-neutral-800">
+            {kayit.girisSaati}
+            <span className="block text-sm text-neutral-600">
+              Giriş saatini yalnızca yönetici değiştirebilir.
+            </span>
+          </p>
+        )}
+        {yonetici && <SaatInput
           etiket="Aracın geldiği saat (bugün)"
           deger={girisSaati}
           onDegisim={setGirisSaati}
           hata={durum.alanHatalari?.girisSaati}
           enFazla={saatGirdisiDegeri()}
           ipucu="Saati değiştirmek ödenecek ücreti doğrudan etkiler."
-        />
+        />}
         {saatDegisti && (
           <p className="rounded-lg border-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
             Giriş saati {kayit.girisSaati} → {girisSaati} olarak değişecek. Bu değişiklik
@@ -173,7 +186,16 @@ export function KayitDuzenleFormu({
       <section className="space-y-3 rounded-xl border border-neutral-300 bg-white p-4">
         <h2 className="text-lg font-bold text-neutral-900">Araç bilgileri</h2>
 
-        {sinifSecenekleri.length > 1 && (
+        {!yonetici && (
+          <p className="text-base text-neutral-800">
+            Araç sınıfı: <span className="font-bold">{ARAC_SINIFI_ETIKETLERI[kayit.aracSinifi]}</span>
+            <span className="block text-sm text-neutral-600">
+              Sınıfı yalnızca yönetici değiştirebilir.
+            </span>
+          </p>
+        )}
+
+        {yonetici && sinifSecenekleri.length > 1 && (
           <fieldset>
             <legend className="mb-1 text-sm font-semibold text-neutral-700">Araç sınıfı</legend>
             <div className="grid gap-2 sm:grid-cols-2">

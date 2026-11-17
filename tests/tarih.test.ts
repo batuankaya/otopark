@@ -11,6 +11,7 @@ import {
   kalanGun,
   saatGirdisiDegeri,
   sureMetni,
+  donemAyristir,
   tarihAraligiOlustur,
   tarihGirdisiDegeri,
   yirmiDortSaatiAstiMi,
@@ -226,5 +227,19 @@ describe("varsayılan 'şimdi' parametresi", () => {
     expect(gunBaslangici().toISOString()).toBe("2026-07-14T21:00:00.000Z");
     expect(tarihGirdisiDegeri()).toBe("2026-07-15");
     expect(bugununSaati("15:25")?.toISOString()).toBe("2026-07-15T12:25:00.000Z");
+  });
+});
+
+describe("donemAyristir", () => {
+  it("tanınan dönemi olduğu gibi döner", () => {
+    expect(donemAyristir("hafta")).toBe("hafta");
+    expect(donemAyristir("ay")).toBe("ay");
+    expect(donemAyristir("bugun")).toBe("bugun");
+  });
+
+  it("tanınmayan ya da eksik değeri bugün sayar", () => {
+    expect(donemAyristir("xyz")).toBe("bugun");
+    expect(donemAyristir(null)).toBe("bugun");
+    expect(donemAyristir(undefined)).toBe("bugun");
   });
 });

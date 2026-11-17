@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 export default async function AnaPano({
   searchParams,
 }: {
-  searchParams: Promise<{ hata?: string; bilgi?: string }>;
+  searchParams: Promise<{ hata?: string }>;
 }) {
-  const { hata, bilgi } = await searchParams;
+  const { hata } = await searchParams;
   await oturumZorunlu(); // oturum ve hesap geçerliliği kontrolü
 
   const [doluluk, sonIslemler, acikVardiya] = await Promise.all([
@@ -31,12 +31,6 @@ export default async function AnaPano({
           Bu bölüme erişim yetkiniz yok.
         </p>
       )}
-      {bilgi && (
-        <p className="rounded-lg border-2 border-green-600 bg-green-50 px-4 py-3 font-semibold text-green-800">
-          {bilgi}
-        </p>
-      )}
-
       {/* Açık vardiya yoksa işlem yapılamaz — en üstte, en görünür yerde uyar. */}
       {!acikVardiya && (
         <div

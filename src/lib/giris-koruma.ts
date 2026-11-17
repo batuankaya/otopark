@@ -67,26 +67,29 @@ export function ipAdresiniAl(basliklar: Headers): string | null {
 export async function girisIzniVarMi(
   email: string,
   ip: string | null,
+  /** Sayıma katılmayacak deneme — çağıranın kendi açtığı kayıt. */
+  haricDenemeId?: string,
 ): Promise<KorumaSonucu> {
   const pencereBaslangici = new Date(Date.now() - PENCERE_DAKIKA * 60_000);
+  const haric = haricDenemeId ? { id: { not: haricDenemeId } } : {};
 
   const [hesapDenemeleri, ipDenemeleri] = await Promise.all([
     prisma.girisDenemesi.findMany({
-      where: { email, zaman: { gte: pencereBaslangici } },
+      where: { email, zaman: { gte: pencereBaslangici }, ...haric },
       orderBy: { zaman: "desc" },
       select: { zaman: true },
     }),
     ip
       ? prisma.girisDenemesi.findMany({
-          where: { ip, zaman: { gte: pencereBaslangici } },
+          where: { ip, zaman: { gte: pencereBaslangici }, ...haric },
           orderBy: { zaman: "desc" },
           select: { zaman: true },
         })
       : Promise.resolve([]),
   ]);
 
-  // Kilit, SON denemeden itibaren başlar: saldırgan denemeye devam ettikçe
-  // süre yenilenir, bekleyip tekrar saldıramaz.
+  // Kilit, son kayıtlı denemeden itibaren başlar. Kilitliyken gelen
+  // istekler kaydedilmez (bkz. denemeyiGeriAl), kilidi uzatmaz.
   const kalan = (denemeler: { zaman: Date }[]) => {
     const sonDeneme = denemeler[0]?.zaman;
     if (!sonDeneme) return 0;
@@ -107,25 +110,39 @@ export async function girisIzniVarMi(
   return { engelli: false };
 }
 
-/** Başarısız denemeyi kaydeder. */
-export async function basarisizDenemeyiKaydet(
-  email: string,
-  ip: string | null,
-): Promise<void> {
-  try {
-    await prisma.girisDenemesi.create({ data: { email, ip } });
+/**
+ * Denemeyi şifre kontrolünden ÖNCE kaydeder ve kaydın kimliğini döner.
+ *
+ * Kayıt şifre kontrolünden sonra yazılsaydı, aynı anda gönderilen yüzlerce
+ * istek bcrypt sürerken (~250 ms) sayacı boş görüp hepsi denetimden geçerdi:
+ * 8 deneme sınırı paralel isteklerle yüzlerce denemeye çıkıyordu. Önce yazıp
+ * sonra saymak, eşzamanlı her isteğin diğerlerini görmesini sağlar.
+ *
+ * Kayıt yazılamazsa hata fırlatılır ve giriş reddedilir: koruma çalışmıyorken
+ * sınırsız deneme açık kalmasın.
+ */
+export async function denemeyiBaslat(email: string, ip: string | null): Promise<string> {
+  const deneme = await prisma.girisDenemesi.create({ data: { email, ip }, select: { id: true } });
 
-    // Eski kayıtları buda — ayrı bir zamanlanmış göreve ihtiyaç kalmasın.
-    // Her denemede değil, ~%5 olasılıkla çalıştırılır (gereksiz yük olmasın).
-    if (Math.random() < 0.05) {
-      await prisma.girisDenemesi.deleteMany({
+  // Eski kayıtları buda — ayrı bir zamanlanmış göreve ihtiyaç kalmasın.
+  // Her denemede değil, ~%5 olasılıkla çalıştırılır (gereksiz yük olmasın).
+  if (Math.random() < 0.05) {
+    await prisma.girisDenemesi
+      .deleteMany({
         where: { zaman: { lt: new Date(Date.now() - SAKLAMA_GUN * 86_400_000) } },
-      });
-    }
-  } catch (hata) {
-    // Koruma kaydı yazılamazsa giriş akışı durmamalı.
-    console.error("Giriş denemesi kaydedilemedi:", hata);
+      })
+      .catch((hata) => console.error("Eski giriş denemeleri budanamadı:", hata));
   }
+
+  return deneme.id;
+}
+
+/**
+ * Kilit yüzünden hiç denenmemiş girişin kaydını siler: kilitliyken gelen
+ * istekler tabloyu büyütmesin ve kilidi uzatmasın.
+ */
+export async function denemeyiGeriAl(id: string): Promise<void> {
+  await prisma.girisDenemesi.deleteMany({ where: { id } });
 }
 
 /** Başarılı girişte hesabın deneme sayacını sıfırlar. */

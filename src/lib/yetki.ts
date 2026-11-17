@@ -22,7 +22,7 @@ export type OturumKullanicisi = {
 /**
  * Oturumdaki kullanıcıyı veritabanından doğrular.
  *
- * Oturum bilgisi çerezdeki JWT'de taşınır ve 12 saat geçerlidir. Yalnızca
+ * Oturum bilgisi çerezdeki JWT'de taşınır ve 7 gün geçerlidir. Yalnızca
  * JWT'ye güvenmek iki soruna yol açıyordu:
  *   1. Pasifleştirilen (veya silinen) kullanıcı, oturumu dolana kadar
  *      çalışmaya devam ediyordu — güvenlik açığı.
@@ -45,18 +45,17 @@ async function dogrulanmisKullanici(): Promise<OturumKullanicisi | null> {
       email: true,
       rol: true,
       aktif: true,
-      sifreDegisimi: true,
+      oturumSurumu: true,
     },
   });
 
   // Hesap silinmiş ya da pasifleştirilmişse oturum geçersiz sayılır.
   if (!kullanici || !kullanici.aktif) return null;
 
-  // Şifre bu oturum açıldıktan SONRA değiştiyse oturum geçersizdir.
-  // Şifre çalındığı için değiştirildiyse saldırganın açık oturumu da düşer;
-  // aksi hâlde 12 saat daha çalışmaya devam ederdi.
-  const acilis = oturum.user.acilis;
-  if (acilis && kullanici.sifreDegisimi.getTime() > acilis) return null;
+  // Oturum açıldıktan sonra çıkış yapıldıysa, şifre değiştiyse ya da hesap
+  // pasifleştirildiyse sürüm artmıştır ve bu oturum geçersizdir. Çerez
+  // kopyalanmış/çalınmış olsa bile 7 gün boyunca çalışmaya devam edemez.
+  if (oturum.user.surum !== kullanici.oturumSurumu) return null;
 
   // Günün ilk temasında mesai kaydı oluşturulur. Yalnızca giriş anında
   // yapmak yetmiyordu: oturum her istekte tazelendiği için çıkış yapmadan

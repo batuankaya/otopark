@@ -54,6 +54,7 @@ export default async function VardiyaRaporuSayfasi({
       odemeYontemi: true,
       ucretDuzeltmeSebebi: true,
       borcTutari: true,
+      borcSebebi: true,
       tahsilEdilenBorc: true,
     },
   });
@@ -196,6 +197,7 @@ export default async function VardiyaRaporuSayfasi({
                   {sayiyaCevir(cikis.borcTutari) > 0 && (
                     <div className="mt-0.5 text-xs font-bold text-red-700">
                       {formatlaPara(cikis.borcTutari)} borç kaldı
+                      {cikis.borcSebebi ? ` — ${cikis.borcSebebi}` : ""}
                     </div>
                   )}
                   {sayiyaCevir(cikis.tahsilEdilenBorc) > 0 && (

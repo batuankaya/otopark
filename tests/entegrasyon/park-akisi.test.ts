@@ -51,7 +51,7 @@ describe("araç giriş/çıkış akışı", () => {
     saatiAyarla("09:00");
     await veritabaniniTemizle();
     temel = await temelVeriyiKur();
-    oturumAc(temel.gorevli.id);
+    await oturumAc(temel.gorevli.id);
     vardiyaId = await vardiyaHazirla();
   });
 
@@ -134,14 +134,10 @@ describe("araç giriş/çıkış akışı", () => {
       expect(sonuc.hata).toContain("Oturumunuz sonlanmış");
     });
 
-    it("şifre oturumdan sonra değiştiyse işlem reddedilir", async () => {
-      // Şifre, oturum açıldıktan SONRA değişmeli. Aynı saniyede değişirse
-      // oturum geçerli kalır (kontrol kesin büyüktür) — bu doğru davranış:
-      // kullanıcı kendi şifresini değiştirince kendi oturumu düşmemeli.
-      saatiAyarla("09:30");
+    it("oturum sürümü arttıysa işlem reddedilir", async () => {
       await prisma.kullanici.update({
         where: { id: temel.gorevli.id },
-        data: { sifreDegisimi: new Date() },
+        data: { oturumSurumu: { increment: 1 } },
       });
 
       const sonuc = await giris({ plaka: "34ABC123" });
@@ -410,7 +406,7 @@ describe("araç giriş/çıkış akışı", () => {
 
     it("yönetici iptal eder, kayıt silinmez", async () => {
       const giren = await giris({ plaka: "34ABC123" });
-      oturumAc(temel.yonetici.id);
+      await oturumAc(temel.yonetici.id);
 
       const sonuc = await kaydiIptalEt(
         BOS_DURUM,
@@ -429,7 +425,7 @@ describe("araç giriş/çıkış akışı", () => {
 
     it("iptal sebebi zorunludur", async () => {
       const giren = await giris({ plaka: "34ABC123" });
-      oturumAc(temel.yonetici.id);
+      await oturumAc(temel.yonetici.id);
 
       const sonuc = await kaydiIptalEt(
         BOS_DURUM,
@@ -440,14 +436,14 @@ describe("araç giriş/çıkış akışı", () => {
 
     it("iptal edilen plaka tekrar girilebilir", async () => {
       const giren = await giris({ plaka: "34ABC123" });
-      oturumAc(temel.yonetici.id);
+      await oturumAc(temel.yonetici.id);
       await kaydiIptalEt(
         BOS_DURUM,
         form({ parkKaydiId: giren.yeniKayitId!, iptalSebebi: "Yanlış plaka" }),
       );
 
       // Kısmi unique index yalnızca ICERIDE kayıtları kapsıyor.
-      oturumAc(temel.gorevli.id);
+      await oturumAc(temel.gorevli.id);
       expect((await giris({ plaka: "34ABC123" })).basarili).toBe(true);
     });
   });
@@ -493,6 +489,7 @@ describe("araç giriş/çıkış akışı", () => {
 
     it("giriş saati düzeltmesi eski/yeni değeriyle günlüğe yazılır", async () => {
       const giren = await giris({ plaka: "34ABC123" });
+      await oturumAc(temel.yonetici.id);
 
       await kaydiDuzenle(
         BOS_DURUM,
@@ -506,6 +503,40 @@ describe("araç giriş/çıkış akışı", () => {
       expect((gunluk.yeniDeger as { girisZamani: string }).girisZamani).toBe(
         "2026-07-15T04:00:00.000Z",
       );
+    });
+
+    it("görevli giriş saatini değiştiremez (ücreti düşürüp farkı cebe atamasın)", async () => {
+      const giren = await giris({ plaka: "34ABC123" });
+      saatiAyarla("12:00");
+
+      const sonuc = await kaydiDuzenle(
+        BOS_DURUM,
+        form({ parkKaydiId: giren.yeniKayitId!, plaka: "34ABC123", girisSaati: "11:50" }),
+      );
+      expect(sonuc.hata).toContain("yalnızca yönetici");
+
+      const kayit = await prisma.parkKaydi.findUniqueOrThrow({ where: { id: giren.yeniKayitId! } });
+      expect(kayit.girisZamani.toISOString()).toBe("2026-07-15T06:00:00.000Z");
+    });
+
+    it("görevli araç sınıfını değiştiremez", async () => {
+      const giren = await giris({ plaka: "34ABC123", aracSinifi: "BUYUK" });
+
+      const sonuc = await kaydiDuzenle(
+        BOS_DURUM,
+        form({ parkKaydiId: giren.yeniKayitId!, plaka: "34ABC123", aracSinifi: "BINEK" }),
+      );
+      expect(sonuc.hata).toContain("yalnızca yönetici");
+    });
+
+    it("görevli saati ve sınıfı değiştirmeden diğer bilgileri düzenleyebilir", async () => {
+      const giren = await giris({ plaka: "34ABC123" });
+
+      const sonuc = await kaydiDuzenle(
+        BOS_DURUM,
+        form({ parkKaydiId: giren.yeniKayitId!, plaka: "34ABC123", renk: "Beyaz" }),
+      );
+      expect(sonuc.basarili).toBe(true);
     });
 
     it("çıkmış kayıt düzenlenemez", async () => {
@@ -541,7 +572,7 @@ describe("araç giriş/çıkış akışı", () => {
 
       const sonuc = await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "40" }),
+        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "40", borcSebebi: "Yanında para yoktu" }),
       );
       expect(sonuc.basarili).toBe(true);
 
@@ -554,12 +585,37 @@ describe("araç giriş/çıkış akışı", () => {
       expect(kayit.odemeYontemi).toBe("NAKIT");
     });
 
+    it("borç bırakılırken sebep zorunludur", async () => {
+      const kayitId = await birSaatlikArac("34ABC123");
+
+      const sonuc = await aracCikisiYap(
+        BOS_DURUM,
+        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0" }),
+      );
+      expect(sonuc.alanHatalari?.borcSebebi).toBeDefined();
+
+      const kayit = await prisma.parkKaydi.findUniqueOrThrow({ where: { id: kayitId } });
+      expect(kayit.durum).toBe("ICERIDE");
+    });
+
+    it("borç sebebi kayda yazılır", async () => {
+      const kayitId = await birSaatlikArac("34ABC123");
+
+      await aracCikisiYap(
+        BOS_DURUM,
+        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0", borcSebebi: "Yanında para yoktu" }),
+      );
+
+      const kayit = await prisma.parkKaydi.findUniqueOrThrow({ where: { id: kayitId } });
+      expect(kayit.borcSebebi).toBe("Yanında para yoktu");
+    });
+
     it("hiç ödeme alınmazsa ücretin tamamı borç olur", async () => {
       const kayitId = await birSaatlikArac("34ABC123");
 
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0" }),
+        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0", borcSebebi: "Yanında para yoktu" }),
       );
 
       const kayit = await prisma.parkKaydi.findUniqueOrThrow({ where: { id: kayitId } });
@@ -585,7 +641,7 @@ describe("araç giriş/çıkış akışı", () => {
       const ilkKayit = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40" }),
+        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40", borcSebebi: "Yanında para yoktu" }),
       );
 
       saatiAyarla("12:00");
@@ -602,7 +658,7 @@ describe("araç giriş/çıkış akışı", () => {
       const ilkKayit = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40" }),
+        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40", borcSebebi: "Yanında para yoktu" }),
       );
 
       saatiAyarla("12:00");
@@ -631,7 +687,7 @@ describe("araç giriş/çıkış akışı", () => {
       const ilkKayit = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "0" }),
+        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "0", borcSebebi: "Yanında para yoktu" }),
       );
 
       saatiAyarla("12:00");
@@ -651,7 +707,7 @@ describe("araç giriş/çıkış akışı", () => {
       const ilk = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ilk, odemeYontemi: "NAKIT", alinanTutar: "0" }),
+        form({ parkKaydiId: ilk, odemeYontemi: "NAKIT", alinanTutar: "0", borcSebebi: "Yanında para yoktu" }),
       );
 
       // İkinci borç: yine 100 TL
@@ -660,7 +716,7 @@ describe("araç giriş/çıkış akışı", () => {
       saatiAyarla("12:00");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ikinci.yeniKayitId!, odemeYontemi: "NAKIT", alinanTutar: "0" }),
+        form({ parkKaydiId: ikinci.yeniKayitId!, odemeYontemi: "NAKIT", alinanTutar: "0", borcSebebi: "Yanında para yoktu" }),
       );
 
       // Üçüncü çıkışta 120 TL borç ödeniyor: ilk borç tamamen, ikincisi kısmen.
@@ -687,7 +743,7 @@ describe("araç giriş/çıkış akışı", () => {
       const ilkKayit = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40" }),
+        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40", borcSebebi: "Yanında para yoktu" }),
       );
 
       saatiAyarla("12:00");
@@ -710,7 +766,7 @@ describe("araç giriş/çıkış akışı", () => {
       const ilkKayit = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40" }),
+        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40", borcSebebi: "Yanında para yoktu" }),
       );
 
       saatiAyarla("12:00");
@@ -731,7 +787,7 @@ describe("araç giriş/çıkış akışı", () => {
       const ilkKayit = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40" }),
+        form({ parkKaydiId: ilkKayit, odemeYontemi: "NAKIT", alinanTutar: "40", borcSebebi: "Yanında para yoktu" }),
       );
 
       saatiAyarla("12:00");
@@ -756,10 +812,10 @@ describe("araç giriş/çıkış akışı", () => {
       const kayitId = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0" }),
+        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0", borcSebebi: "Yanında para yoktu" }),
       );
 
-      oturumAc(temel.yonetici.id);
+      await oturumAc(temel.yonetici.id);
       const sonuc = await kaydiIptalEt(
         BOS_DURUM,
         form({ parkKaydiId: kayitId, iptalSebebi: "Görevli yanlış tutar girdi" }),
@@ -776,15 +832,15 @@ describe("araç giriş/çıkış akışı", () => {
       const kayitId = await birSaatlikArac("34ABC123");
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0" }),
+        form({ parkKaydiId: kayitId, odemeYontemi: "NAKIT", alinanTutar: "0", borcSebebi: "Yanında para yoktu" }),
       );
 
-      oturumAc(temel.yonetici.id);
+      await oturumAc(temel.yonetici.id);
       await kaydiIptalEt(
         BOS_DURUM,
         form({ parkKaydiId: kayitId, iptalSebebi: "Görevli yanlış tutar girdi" }),
       );
-      oturumAc(temel.gorevli.id);
+      await oturumAc(temel.gorevli.id);
 
       saatiAyarla("12:00");
       const ikinci = await giris({ plaka: "34ABC123" });
@@ -805,6 +861,7 @@ describe("araç giriş/çıkış akışı", () => {
           duzeltilmisUcret: "80",
           ucretDuzeltmeSebebi: "Bariyer arızası nedeniyle indirim",
           alinanTutar: "50",
+          borcSebebi: "Yanında para yoktu",
         }),
       );
 
@@ -901,6 +958,7 @@ describe("araç giriş/çıkış akışı", () => {
 
     it("düzenlemede sınıf değişirse tarife de değişir", async () => {
       const giren = await giris({ plaka: "34ABC123" });
+      await oturumAc(temel.yonetici.id);
 
       const sonuc = await kaydiDuzenle(
         BOS_DURUM,
@@ -929,6 +987,7 @@ describe("araç giriş/çıkış akışı", () => {
 
     it("sınıf değişikliği denetim izine yazılır", async () => {
       const giren = await giris({ plaka: "34ABC123" });
+      await oturumAc(temel.yonetici.id);
 
       await kaydiDuzenle(
         BOS_DURUM,
@@ -996,7 +1055,7 @@ describe("araç giriş/çıkış akışı", () => {
 
       await aracCikisiYap(
         BOS_DURUM,
-        form({ parkKaydiId: giren.yeniKayitId!, odemeYontemi: "NAKIT", alinanTutar: "50" }),
+        form({ parkKaydiId: giren.yeniKayitId!, odemeYontemi: "NAKIT", alinanTutar: "50", borcSebebi: "Yanında para yoktu" }),
       );
 
       const kayit = await prisma.parkKaydi.findUniqueOrThrow({

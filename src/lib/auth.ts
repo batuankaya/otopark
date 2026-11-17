@@ -5,8 +5,9 @@ import { headers } from "next/headers";
 
 import { authConfig } from "./auth.config";
 import {
-  basarisizDenemeyiKaydet,
   denemeleriTemizle,
+  denemeyiBaslat,
+  denemeyiGeriAl,
   girisIzniVarMi,
   ipAdresiniAl,
   SAHTE_SIFRE_OZETI,
@@ -40,10 +41,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { email, sifre } = ayrisma.data;
         const ip = ipAdresiniAl(await headers());
 
-        // Şifre kontrolünden ÖNCE: kilitliyken bcrypt çalıştırmak gereksiz
-        // yük yaratır ve cevap süresinden saldırgana bilgi sızdırır.
-        const izin = await girisIzniVarMi(email, ip);
-        if (izin.engelli) return null;
+        // Deneme şifre kontrolünden ÖNCE kaydedilir, sonra sayılır: paralel
+        // istekler sayacı birlikte boş görüp kilidi aşamasın. Başarısız
+        // denemede kayıt kalır; başarılı girişte hepsi temizlenir.
+        // Kilitliyken bcrypt çalıştırılmaz: gereksiz yük yaratır ve cevap
+        // süresinden saldırgana bilgi sızdırır.
+        const denemeId = await denemeyiBaslat(email, ip);
+        const izin = await girisIzniVarMi(email, ip, denemeId);
+        if (izin.engelli) {
+          await denemeyiGeriAl(denemeId);
+          return null;
+        }
 
         const kullanici = await prisma.kullanici.findUnique({
           where: { email },
@@ -54,6 +62,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             sifreHash: true,
             rol: true,
             aktif: true,
+            oturumSurumu: true,
           },
         });
 
@@ -62,10 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const hash = kullanici?.sifreHash ?? SAHTE_SIFRE_OZETI;
         const sifreDogru = await bcrypt.compare(sifre, hash);
 
-        if (!kullanici || !sifreDogru || !kullanici.aktif) {
-          await basarisizDenemeyiKaydet(email, ip);
-          return null;
-        }
+        if (!kullanici || !sifreDogru || !kullanici.aktif) return null;
 
         // Başarılı giriş: brute force sayacı sıfırlanır ve günün ilk
         // girişiyse mesai kaydı oluşur (ikisi de giriş akışını bloklamaz).
@@ -77,6 +83,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: kullanici.adSoyad,
           adSoyad: kullanici.adSoyad,
           rol: kullanici.rol,
+          oturumSurumu: kullanici.oturumSurumu,
         };
       },
     }),

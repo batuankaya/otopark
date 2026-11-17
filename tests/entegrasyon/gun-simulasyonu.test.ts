@@ -92,7 +92,7 @@ describe("bir iş günü: 08:00 → 20:30", () => {
     await veritabaniniTemizle();
     // İşletmenin gerçek ayarı: vardiya gece yarısı sıfırlanır.
     temel = await temelVeriyiKur({ sifirlamaSaati: 0 });
-    oturumAc(temel.gorevli.id);
+    await oturumAc(temel.gorevli.id);
   });
 
   afterAll(() => zamaniSerbestBirak());

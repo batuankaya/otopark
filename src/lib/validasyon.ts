@@ -164,7 +164,8 @@ export const kullaniciSemasi = z.object({
   adSoyad: z.string().trim().min(3, "Ad soyad en az 3 karakter olmalıdır.").max(100),
   email: z.string().trim().toLowerCase().email("Geçerli bir e-posta adresi girin."),
   rol: z.enum(["ADMIN", "GOREVLI"], { message: "Rol seçilmelidir." }),
-  aktif: z.coerce.boolean().default(true),
+  // İşaretsiz onay kutusu forma hiç gönderilmez: eksik alan "pasif" demektir.
+  aktif: z.coerce.boolean().default(false),
   sifre: z.preprocess(bosluklarıTemizle, sifreAlani.optional()),
 });
 
@@ -284,6 +285,7 @@ export const aracCikisSemasi = z.object({
    * olarak kaydedilir. Boşsa tahakkukun tamamı ödenmiş sayılır.
    */
   alinanTutar: tutarAlani("Alınan tutar").optional(),
+  borcSebebi: z.preprocess(bosluklarıTemizle, z.string().min(5, "Borç sebebi en az 5 karakter olmalıdır.").max(500).optional()),
   /** Aracın eski borçlarından bu işlemde tahsil edilen tutar. */
   borcTahsilati: tutarAlani("Borç tahsilatı").optional(),
   notlar: opsiyonelMetin(500),
@@ -450,7 +452,8 @@ export const parkAlaniSemasi = z.object({
   ad: z.string().trim().min(1, "Park alanı adı zorunludur.").max(40),
   kapasite: z.coerce.number().int().min(0, "Kapasite negatif olamaz.").max(10000),
   sira: z.coerce.number().int().min(0).max(999).default(0),
-  aktif: z.coerce.boolean().default(true),
+  // İşaretsiz onay kutusu forma hiç gönderilmez: eksik alan "pasif" demektir.
+  aktif: z.coerce.boolean().default(false),
 });
 
 export const ayarSemasi = z.object({

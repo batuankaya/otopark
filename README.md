@@ -361,6 +361,9 @@ Görevli aracı kaydetmeyi unutursa giriş saatini elle girebilir:
 - **Yalnızca aynı gün** geçerlidir; ileri bir saat reddedilir
 - Boş bırakılırsa şu anki saat kullanılır
 - Ücreti doğrudan etkilediği için işlem günlüğüne *"geriye dönük kayıt"* olarak yazılır
+- İçerideki aracın giriş saatini ve araç sınıfını sonradan **yalnızca yönetici**
+  değiştirebilir. Görevli değiştirebilseydi müşteriden tam ücreti alıp kaydı
+  ucuzlatabilir, fark hiçbir rapora "ücret düzeltmesi" olarak yansımazdı
 
 ---
 
@@ -467,7 +470,8 @@ de `hour12: false` ile sabitlendi.
 | Yetki atlatma | Middleware + sayfa bazlı çift kontrol, her istekte DB doğrulaması |
 | **Veritabanı erişimi** | Postgres yalnızca `127.0.0.1`'e bağlı, şifre `.env`'den |
 | **Şifre politikası** | En az 10 karakter + harf + rakam, yaygın şifreler reddedilir |
-| **Şifre değişimi** | Şifre değişince o kullanıcının açık oturumları anında düşer |
+| **Oturum iptali** | Çıkış, şifre değişimi ve pasifleştirme o kullanıcının tüm açık oturumlarını anında düşürür |
+| **CSV formül enjeksiyonu** | `=`, `+`, `-`, `@` ile başlayan hücrelerin başına `'` eklenir |
 
 **Brute force koruması** `src/lib/giris-koruma.ts` içinde. Kritik ayrıntı: kontrol
 `authorize` callback'inde yapılır, Server Action'da değil — `/api/auth/callback/credentials`
@@ -492,8 +496,13 @@ e-postasını bilen biri 15 dakikada bir 8 deneme yaparak gerçek yöneticiyi de
 tutabilir. Tanınan cihazı kilitten muaf tutan çözüm sonraki adım olarak planlandı.
 
 **Pasifleştirilen kullanıcı anında düşer:** oturum her istekte veritabanından doğrulanır,
-JWT'ye güvenilmez. Rol değişikliği ve şifre değişimi de anında yürürlüğe girer —
-JWT'de oturum açılış zamanı tutulur, `sifreDegisimi` damgasından eskiyse oturum geçersiz.
+JWT'ye güvenilmez. Rol değişikliği de anında yürürlüğe girer.
+
+**Oturumlar sunucudan iptal edilebilir.** JWT'yi sunucu tek başına geri alamaz; çıkışta
+yalnızca çerez silinseydi kopyalanmış bir çerez 7 gün çalışmaya devam ederdi. Bu yüzden
+her kullanıcının bir `oturumSurumu` vardır ve JWT açıldığı andaki sürümü taşır. Çıkış,
+şifre değişimi ve pasifleştirme sürümü artırır, eski oturumlar anında geçersiz olur.
+Bedeli: bir cihazdan çıkış yapmak kullanıcının diğer cihazlarındaki oturumları da kapatır.
 
 **Veritabanı ağa kapalı.** `docker-compose.yml` portu `127.0.0.1:5433`'e bağlar. Bu
 kritik: `"5433:5432"` yazılırsa Docker `0.0.0.0`'a bağlar ve aynı WiFi/hotspot'taki
@@ -523,7 +532,7 @@ oluşmaz — görevli zaten çalışmak için giriş yapmak zorunda.
 - Günde kişi başına **tek kayıt**: günün ilk teması esas alınır, sonrakiler saati
   değiştirmez (`(kullaniciId, gun)` benzersiz)
 - Kayıt yalnızca giriş anında değil, **her kimlik doğrulamasında** denenir. Oturum
-  12 saatlik ve her istekte tazelendiği için, çıkış yapmadan çalışmaya devam eden
+  7 günlük ve her istekte tazelendiği için, çıkış yapmadan çalışmaya devam eden
   biri ikinci gün hiç giriş yapmaz — yalnızca girişe bağlanırsa o günün kaydı hiç
   oluşmazdı. Gereksiz yazım işlem belleğindeki bir kümeyle engellenir
 - **Raporlar** ekranında görünür, geliş sırasına göre numaralı (1., 2., …)

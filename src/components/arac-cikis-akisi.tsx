@@ -692,6 +692,27 @@ export function AracCikisAkisi({
               </div>
 
               {yeniBorc > 0 && (
+                <div>
+                  <label htmlFor="borc-sebebi" className="mb-1 block text-sm font-semibold text-neutral-700">
+                    Neden ödenmedi? <span className="text-red-700">*</span>
+                  </label>
+                  <textarea
+                    id="borc-sebebi"
+                    name="borcSebebi"
+                    rows={2}
+                    placeholder="Örn: Yanında para yoktu, yarın getirecek"
+                    aria-invalid={!!durum.alanHatalari?.borcSebebi}
+                    className="w-full rounded-lg border-2 border-neutral-300 p-3 text-base focus:border-blue-700 focus:outline-none"
+                  />
+                  {durum.alanHatalari?.borcSebebi && (
+                    <p role="alert" className="mt-1 text-sm font-semibold text-red-700">
+                      {durum.alanHatalari.borcSebebi}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {yeniBorc > 0 && (
                 <p className="rounded-lg border-2 border-red-500 bg-red-50 px-3 py-2 text-base font-bold text-red-800">
                   {formatlaPara(yeniBorc)} borç olarak kaydedilecek. Araç tekrar
                   geldiğinde çıkış ekranında hatırlatılır.

@@ -247,9 +247,12 @@ export async function kullaniciKaydet(
               email: veri.email,
               rol: veri.rol,
               aktif: veri.aktif,
-              // Şifre değişince damga güncellenir: o kullanıcının açık
-              // oturumları anında geçersiz olur.
-              ...(sifreHash ? { sifreHash, sifreDegisimi: new Date() } : {}),
+              ...(sifreHash ? { sifreHash } : {}),
+              // Şifre değişince ya da hesap pasifleşince o kullanıcının
+              // açık oturumları anında geçersiz olur. Pasifleştirmede de
+              // artırılır: hesap yeniden açıldığında, örneğin çalınan
+              // telefondaki eski oturum geri canlanmasın.
+              ...(sifreHash || !veri.aktif ? { oturumSurumu: { increment: 1 } } : {}),
             },
           })
         : await tx.kullanici.create({

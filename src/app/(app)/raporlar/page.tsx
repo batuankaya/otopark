@@ -15,21 +15,19 @@ import {
   gunlukSeri,
   saatlikDoluluk,
 } from "@/lib/raporlar";
-import { tarihAraligiOlustur } from "@/lib/tarih";
+import { donemAyristir, tarihAraligiOlustur } from "@/lib/tarih";
 import { adminZorunlu } from "@/lib/yetki";
 
 export const metadata: Metadata = { title: "Raporlar" };
 export const dynamic = "force-dynamic";
 
-type Donem = "bugun" | "hafta" | "ay";
-
 export default async function RaporlarSayfasi({
   searchParams,
 }: {
-  searchParams: Promise<{ donem?: Donem }>;
+  searchParams: Promise<{ donem?: string }>;
 }) {
   await adminZorunlu();
-  const { donem = "bugun" } = await searchParams;
+  const donem = donemAyristir((await searchParams).donem);
 
   const aralik = tarihAraligiOlustur(donem);
 

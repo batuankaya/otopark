@@ -201,8 +201,18 @@ export function sonrakiVardiyaSifirlamasi(
 export type TarihAraligi = { baslangic: Date; bitis: Date; etiket: string };
 
 /** Raporlarda kullanılan hazır aralıklar. */
+export type Donem = "bugun" | "hafta" | "ay";
+
+/**
+ * Adres çubuğundan gelen dönem değerini doğrular. Tanınmayan değer "bugün"
+ * sayılır — elle yazılmış `?donem=xyz` sayfayı çökertmesin.
+ */
+export function donemAyristir(deger: string | null | undefined): Donem {
+  return deger === "hafta" || deger === "ay" ? deger : "bugun";
+}
+
 export function tarihAraligiOlustur(
-  tur: "bugun" | "hafta" | "ay",
+  tur: Donem,
   referans: Date = new Date(),
 ): TarihAraligi {
   const bugunBas = gunBaslangici(referans);

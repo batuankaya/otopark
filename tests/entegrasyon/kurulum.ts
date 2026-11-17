@@ -21,7 +21,7 @@ process.env.DATABASE_URL = testVeritabaniAdresi();
  * Taklit fabrikası çalıştığı anda okunduğu için global nesnede tutulur.
  */
 declare global {
-  var __testOturumu: { user: { id: string; acilis: number } } | null | undefined;
+  var __testOturumu: { user: { id: string; surum: number } } | null | undefined;
 }
 
 globalThis.__testOturumu = null;
@@ -29,11 +29,20 @@ globalThis.__testOturumu = null;
 /**
  * Gerçek `auth()` next-auth'a, çereze ve HTTP isteğine bağlı — testte
  * kurulamaz. Yerine oturumu doğrudan veriyoruz; `lib/yetki.ts` bu kimlikle
- * GERÇEK veritabanı doğrulamasını yapmaya devam ediyor (aktif mi, şifre
- * değişmiş mi), yani asıl sınamak istediğimiz mantık taklit edilmiyor.
+ * GERÇEK veritabanı doğrulamasını yapmaya devam ediyor (aktif mi, oturum
+ * sürümü güncel mi), yani asıl sınamak istediğimiz mantık taklit edilmiyor.
  */
 vi.mock("@/lib/auth", () => ({
   auth: async () => globalThis.__testOturumu ?? null,
+  signOut: async () => {},
+}));
+
+/**
+ * `actions/kimlik.ts` yalnızca `AuthError` sınıfını alır; paketin kendisi
+ * Next çalışma zamanı olmadan yüklenemiyor.
+ */
+vi.mock("next-auth", () => ({
+  AuthError: class AuthError extends Error {},
 }));
 
 vi.mock("next/cache", () => ({

@@ -400,6 +400,15 @@ export async function aracCikisiYap(
     };
   }
   const borcTutari = kurusYuvarla(Math.max(0, tahakkuk - tahsilEdilen));
+  // Sebep zorunlu: aksi hâlde görevli müşteriden tam ücreti alıp "ödemedi"
+  // yazarak parayı kasaya sokmayabilirdi. Sebep fişte ve raporda görünür.
+  if (borcTutari > 0 && !veri.borcSebebi) {
+    return {
+      alanHatalari: {
+        borcSebebi: "Eksik tahsilat yaptınız — sebep girmeniz zorunludur.",
+      },
+    };
+  }
 
   // Aracın önceki çıkışlarından kalan borç bu işlemde de tahsil edilebilir.
   const acikBorclar = kayit.aracId ? await acikBorclariAl(kayit.aracId) : [];
@@ -435,6 +444,7 @@ export async function aracCikisiYap(
           odemeYontemi: kasayaGiren > 0 ? veri.odemeYontemi : null,
           borcTutari: new Prisma.Decimal(borcTutari),
           borcKalan: new Prisma.Decimal(borcTutari),
+          borcSebebi: borcTutari > 0 ? veri.borcSebebi : null,
           tahsilEdilenBorc: new Prisma.Decimal(borcTahsilati),
           tarifeTuru: sonuc.uygulananTarifeTuru,
           ucretDuzeltmeSebebi: ucretDegisti ? veri.ucretDuzeltmeSebebi : null,
@@ -457,12 +467,13 @@ export async function aracCikisiYap(
           hesaplananUcret: sonuc.ucret,
           tahsilEdilenUcret: tahsilEdilen,
           borcTutari,
+          borcSebebi: borcTutari > 0 ? veri.borcSebebi : null,
           tahsilEdilenBorc: borcTahsilati,
           odemeYontemi: kasayaGiren > 0 ? veri.odemeYontemi : null,
         },
         aciklama:
           `${aracEtiketi(kayit)} çıkışı — ${tahsilEdilen} TL` +
-          (borcTutari > 0 ? ` (${borcTutari} TL BORÇ kaldı)` : ""),
+          (borcTutari > 0 ? ` (${borcTutari} TL BORÇ kaldı: ${veri.borcSebebi})` : ""),
       });
 
       // Eski borç tahsilatı ayrı bir denetim kaydı: para bu vardiyanın
@@ -620,6 +631,17 @@ export async function kaydiDuzenle(
   // tarifesine bağlanır. Aksi hâlde "büyük araç" işaretlenir ama binek
   // tarifesinden ücretlendirilirdi.
   const sinifDegisti = veri.aracSinifi !== kayit.aracSinifi;
+  const saatDegisti =
+    !!veri.girisZamani && veri.girisZamani.getTime() !== kayit.girisZamani.getTime();
+
+  // Giriş saati ve sınıf ücreti doğrudan belirler. Görevli bunları
+  // değiştirebilseydi, müşteriden tam ücreti alıp kaydı ucuzlatarak farkı
+  // cebine atabilirdi — çıkışta hesaplanan ücret de düştüğü için "ücret
+  // düzeltmesi" olarak hiçbir rapora yansımazdı.
+  if ((saatDegisti || sinifDegisti) && kullanici.rol !== "ADMIN") {
+    return { hata: "Giriş saatini ve araç sınıfını yalnızca yönetici değiştirebilir." };
+  }
+
   const yeniTarife = sinifDegisti ? await aktifTarifeyiAl(veri.aracSinifi) : null;
   if (sinifDegisti && !yeniTarife) {
     return {
@@ -674,7 +696,7 @@ export async function kaydiDuzenle(
           notlar: veri.notlar ?? null,
           aracSinifi: veri.aracSinifi,
           ...(yeniTarife ? { tarifeId: yeniTarife.id } : {}),
-          ...(veri.girisZamani ? { girisZamani: veri.girisZamani } : {}),
+          ...(saatDegisti ? { girisZamani: veri.girisZamani! } : {}),
         },
       });
       if (guncelleme.count === 0) throw new Error("DURUM_DEGISTI");
@@ -698,12 +720,12 @@ export async function kaydiDuzenle(
           model: veri.model ?? null,
           renk: veri.renk ?? null,
           aracSinifi: veri.aracSinifi,
-          girisZamani: (veri.girisZamani ?? kayit.girisZamani).toISOString(),
+          girisZamani: (saatDegisti ? veri.girisZamani! : kayit.girisZamani).toISOString(),
           notlar: veri.notlar ?? null,
         },
         aciklama:
           `${aracEtiketi({ ...kayit })} kaydı düzenlendi` +
-          (veri.girisZamani && veri.girisZamani.getTime() !== kayit.girisZamani.getTime()
+          (saatDegisti
             ? " (giriş saati değişti — ücreti etkiler)"
             : "") +
           (sinifDegisti

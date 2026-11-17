@@ -54,16 +54,6 @@ export async function temelVeriyiKur(
   // kapatır ve sonraki işlemler sessizce başarısız olur.
   const { kapasite = 100, sifirlamaSaati = 0 } = secenekler;
 
-  /**
-   * Şifre değişim anı açıkça geçmişe yazılır.
-   *
-   * Şema varsayılanı `now()` veritabanında üretilir ve GERÇEK saati alır —
-   * sahte saat (simülasyon günü) ona göre geçmişte kalır. `lib/yetki.ts` de
-   * "şifre oturum açıldıktan sonra değişmiş" deyip oturumu geçersiz sayar.
-   * Kontrolün kendisi doğru; testte tarihleri hizalamak gerekiyor.
-   */
-  const sifreDegisimi = new Date("2020-01-01T00:00:00.000Z");
-
   const [yonetici, gorevli, gorevliIki] = await Promise.all([
     prisma.kullanici.create({
       data: {
@@ -72,7 +62,6 @@ export async function temelVeriyiKur(
         // Şifre doğrulaması testte devrede değil (auth taklit ediliyor);
         // alan zorunlu olduğu için geçerli biçimde bir hash yazılır.
         sifreHash: "$2a$12$testtesttesttesttesttesttesttesttesttesttesttesttestte",
-        sifreDegisimi,
         rol: "ADMIN",
       },
     }),
@@ -81,7 +70,6 @@ export async function temelVeriyiKur(
         adSoyad: "Mehmet Görevli",
         email: "gorevli@otopark.test",
         sifreHash: "$2a$12$testtesttesttesttesttesttesttesttesttesttesttesttestte",
-        sifreDegisimi,
         rol: "GOREVLI",
       },
     }),
@@ -90,7 +78,6 @@ export async function temelVeriyiKur(
         adSoyad: "Zeynep Görevli",
         email: "gorevli2@otopark.test",
         sifreHash: "$2a$12$testtesttesttesttesttesttesttesttesttesttesttesttestte",
-        sifreDegisimi,
         rol: "GOREVLI",
       },
     }),
@@ -149,13 +136,16 @@ export async function temelVeriyiKur(
 /**
  * Verilen kullanıcıyı "oturum açmış" yapar.
  *
- * `acilis` (oturumun açılma anı) şu an olarak verilir: `lib/yetki.ts`,
- * şifre bu andan sonra değiştiyse oturumu geçersiz sayar.
+ * Oturum, kullanıcının veritabanındaki GÜNCEL sürümüyle açılır — gerçek
+ * girişte olduğu gibi. Sürüm sonradan artarsa `lib/yetki.ts` oturumu
+ * geçersiz sayar.
  */
-export function oturumAc(kullaniciId: string): void {
-  globalThis.__testOturumu = {
-    user: { id: kullaniciId, acilis: Date.now() },
-  };
+export async function oturumAc(kullaniciId: string): Promise<void> {
+  const { oturumSurumu } = await prisma.kullanici.findUniqueOrThrow({
+    where: { id: kullaniciId },
+    select: { oturumSurumu: true },
+  });
+  globalThis.__testOturumu = { user: { id: kullaniciId, surum: oturumSurumu } };
 }
 
 export function oturumKapat(): void {

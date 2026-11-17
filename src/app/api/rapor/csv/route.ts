@@ -1,10 +1,16 @@
 import { ARAC_SINIFI_ETIKETLERI } from "@/lib/arac-sinifi";
+import { csvSatiri } from "@/lib/csv";
 import { islemGunluguYaz } from "@/lib/gunluk";
 import { formatlaPlaka } from "@/lib/plaka";
 import { sayiyaCevir } from "@/lib/para";
 import { prisma } from "@/lib/prisma";
 import { ciroOzeti, gunlukSeri } from "@/lib/raporlar";
-import { formatlaTarihSaat, tarihAraligiOlustur, tarihGirdisiDegeri } from "@/lib/tarih";
+import {
+  donemAyristir,
+  formatlaTarihSaat,
+  tarihAraligiOlustur,
+  tarihGirdisiDegeri,
+} from "@/lib/tarih";
 import { hesaplaDakika } from "@/lib/ucret";
 import { oturumAl } from "@/lib/yetki";
 
@@ -14,24 +20,8 @@ import { oturumAl } from "@/lib/yetki";
  * KVKK: Plaka kişisel veridir; her dışa aktarma işlem günlüğüne yazılır —
  * kim, ne zaman, hangi aralığı, kaç satır aldı.
  *
- * Excel Türkçe yerelde noktalı virgülle ayrılmış dosya bekler; ayrıca
  * Türkçe karakterlerin bozulmaması için BOM eklenir.
  */
-
-const AYIRAC = ";";
-
-function csvAlani(deger: unknown): string {
-  if (deger === null || deger === undefined) return "";
-  const metin = String(deger);
-  if (metin.includes(AYIRAC) || metin.includes('"') || metin.includes("\n")) {
-    return `"${metin.replace(/"/g, '""')}"`;
-  }
-  return metin;
-}
-
-function csvSatiri(alanlar: unknown[]): string {
-  return alanlar.map(csvAlani).join(AYIRAC);
-}
 
 /** Türkçe Excel ondalık ayıracı virgüldür. */
 function tutarMetni(deger: unknown): string {
@@ -48,7 +38,7 @@ export async function GET(istek: Request) {
   }
 
   const url = new URL(istek.url);
-  const donem = (url.searchParams.get("donem") ?? "bugun") as "bugun" | "hafta" | "ay";
+  const donem = donemAyristir(url.searchParams.get("donem"));
   const tur = url.searchParams.get("tur") ?? "kayitlar";
   const aralik = tarihAraligiOlustur(donem);
 
@@ -112,6 +102,7 @@ export async function GET(istek: Request) {
         "Tahsil edilen (TL)",
         "Borç (TL)",
         "Kalan borç (TL)",
+        "Borç sebebi",
         "Eski borç tahsilatı (TL)",
         "Ödeme",
         "Durum",
@@ -136,6 +127,7 @@ export async function GET(istek: Request) {
           kayit.tahsilEdilenUcret !== null ? tutarMetni(kayit.tahsilEdilenUcret) : "",
           tutarMetni(kayit.borcTutari),
           tutarMetni(kayit.borcKalan),
+          kayit.borcSebebi ?? "",
           tutarMetni(kayit.tahsilEdilenBorc),
           kayit.odemeYontemi === "NAKIT" ? "Nakit" : kayit.odemeYontemi === "KART" ? "Kart" : "",
           durumEtiketi[kayit.durum],
